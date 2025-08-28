@@ -1,0 +1,6 @@
+#/lustre_data/spotlight/data/TST_RTP_20250814_154217
+#/lustre_data/spotlight/data/TEST_RT_20250813_203023/FilData_without_offset
+#/lustre_archive/gnsmdev/Kenil/test_ffapipe/obs_dir
+#/lustre_data/spotlight/data/TST_FFA_20250824_111336/FilData_dwnsmp/
+/lustre_data/spotlight/data/TEST_RT_20250813_203023/FilData_dwnsmp
+/lustre_data/spotlight/data/TST_RTP_20250814_154217/FilData_dwnsmp

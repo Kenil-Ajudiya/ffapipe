@@ -1,0 +1,13 @@
+rank 0=rggpur02 slot=0
+rank 1=rggpur03 slot=0
+rank 2=rggpur04 slot=0
+rank 3=rggpur05 slot=0
+rank 4=rggpur06 slot=0
+rank 5=rggpur07 slot=0
+rank 6=rggpur08 slot=0
+rank 7=rggpur09 slot=0
+rank 8=rggpur10 slot=0
+rank 9=rggpur11 slot=0
+rank 10=rggpur12 slot=0
+rank 11=rggpur13 slot=0
+rank 12=rggpur14 slot=0

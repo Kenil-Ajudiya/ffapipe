@@ -1,0 +1,13 @@
+rggpur02 slots=1
+rggpur03 slots=1
+rggpur04 slots=1
+rggpur05 slots=1
+rggpur06 slots=1
+rggpur07 slots=1
+rggpur08 slots=1
+rggpur09 slots=1
+rggpur10 slots=1
+rggpur11 slots=1
+rggpur12 slots=1
+rggpur13 slots=1
+rggpur14 slots=1

@@ -57,7 +57,7 @@ FFA search are set accordingly. These are:
 There are 4 main directories:
 
 1. `configurations`: This directory stores the configurations for the pipeline.
-   The [`ghrss_config.yaml`](./configurations/ghrss_config.yaml) contains the
+   The [`LPTs_config.yaml`](./configurations/LPTs_config.yaml) contains the
    configuration for the main pipeline, whereas the
    [`ffa_config`](./configurations/ffa_config) directory contains the
    configurations for the different parameter spaces searched for by `riptide`.
@@ -99,7 +99,7 @@ Depending on how you want to run the pipeline, you can either of two scripts:
 * The [`single_config.py`](./single_config.py) runs the pipeline on a single
   machine. If your machine has multiple cores, you can get a speedup by
   specifying the number of cores you want to use in the
-  [`ghrss_config.yaml`](./configurations/ghrss_config.yaml) file.
+  [`LPTs_config.yaml`](./configurations/LPTs_config.yaml) file.
 
 * The [`multi_config.py`](./multi_config.py) file. Originally, this script was
   intended for automating the run of the pipeline on multiple machines. However,

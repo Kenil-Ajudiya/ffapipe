@@ -34,14 +34,20 @@ if __name__ == '__main__':
 
         To be run from the "GHRSS_FFA_Pipeline" directory only.
 
-        usage: python the_monitor.py [date]
+        usage: python the_monitor.py [date] [rank]
 
         '''))
 
     parser.add_argument('date',
                         type = str,
                         help = textwrap.dedent(
-                        """ The date for which updates are required. """))
+                        """ The date for which updates are required."""))
+    
+    parser.add_argument('rank',
+                        type = str,
+                        default= '0',
+                        help = textwrap.dedent(
+                        """ The rank for which updates are required. Default is 0."""))
 
     try:
 
@@ -67,7 +73,6 @@ if __name__ == '__main__':
         descp_cfg = ('Current Pipeline Configuration\n'
                      '------------------------------\n' 
                      'Node(s): {nodes}\n'
-                     'Machine configuration: {mach_config}\n'
                      'Dates to be analysed: {dates}\n'
                      'Number of cores per node: {cores}\n\n'
       
@@ -76,7 +81,6 @@ if __name__ == '__main__':
                      'Period ranges searched by the FFA:\n'
                      '    (0.2 to 0.5 s), (0.5 to 2s) and (2 to 100s)\n\n'
                      '').format(nodes=config._config['pipeline_variables']['nodes'],
-                                mach_config=config.mach_config,
                                 dates=config._config['pipeline_variables']['dates'][config.backend],
                                 cores=config.cores,
                                 DM_lowest=config.ddplan['DM_lowest'],

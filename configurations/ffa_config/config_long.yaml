@@ -2,13 +2,13 @@ name: "long"
 
 ### Keyword arguments to the ffa_search() function ###
 search:
-    period_min: 2.00
+    period_min: 1.00
     period_max: 10.00
-    bins_min: 380
-    bins_max: 420
+    bins_min: 70
+    bins_max: 80
     fpmin: 10
-    rmed_width: 1.0
-    rmed_minpts: 101
+    rmed_width: 2.0
+    rmed_minpts: 20
     wtsp: 1.5
     threads: 1
 
@@ -17,7 +17,7 @@ detect:
     # Length of a periodogram segment in number of DFT bins.
     segment_dftbins_length: 30.0
 
-    # Minimum number of segmquitents a periodogram must contain for the dynamic
+    # Minimum number of segments a periodogram must contain for the dynamic
     # selection threshold to be applied. If the number of segments is lower,
     # a constant 'snr_min' threshold is applied.
     min_segments: 8

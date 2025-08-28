@@ -17,6 +17,11 @@ from .filterbank_no_rfifind import Filterbank
 
 # from .filterbank import Filterbank
 
+def make_dirs(dirs=[]):
+    """Make the appropriate directories.
+    """
+    for dir in dirs:
+        os.makedirs(dir, exist_ok=True)
 
 class PipelineWorker(object):
 
@@ -83,23 +88,6 @@ class PipelineWorker(object):
             EXT = ".raw"
             return EXT
 
-    def make_dirs(self, beam_rfi_path, beam_state_path):
-
-        """Make the appropriate directories.
-
-        Parameters:
-        -----------
-        beam_rfi_path: str or Path-like
-            The absolute path to the parent directory
-            where all RFI masks are stored.
-        beam_state_path: str or Path-like
-            The absolute path to the parent directory
-            where all outputs are stored.
-        """
-
-        os.makedirs(beam_rfi_path, exist_ok=True)
-        os.makedirs(beam_state_path, exist_ok=True)
-
     def configure_logger(self, log_path, level=logging.INFO):
 
         """ Configure the logger for this filterbank file. """
@@ -148,11 +136,11 @@ class PipelineWorker(object):
 
         # Make the appropriate directories.
 
-        self.make_dirs(self.beam_rfi_path, self.beam_state_path)
+        make_dirs(dirs=[self.beam_rfi_path, self.beam_state_path])
 
         # Path to the log file.
 
-        self.log_file = os.path.join(self.beam_state_path, "{}.log".format(self.date))
+        self.log_file = os.path.join(self.beam_state_path, f"{self.date}.log")
 
         # Configure the logger.
 
@@ -166,42 +154,57 @@ class PipelineWorker(object):
 
         if EXT:
 
-            self.logger.info("Start processing data for date {:s}.".format(self.date))
+            self.logger.info(f"Start processing data for date {self.date}.")
             start_time = timeit.default_timer()
 
             _files_ = filter_by_ext(self.date_path, extension=EXT)
+            FILES = list(_files_)
+            _proc_files_ = []
+
+            RANK = self.config.RANK
+            NRANKS = self.config.NRANKS
 
             #####################################################################################
 
             # Unpickle list of Meta objects and get the filenames from them.
+            
+            for rnk in range(NRANKS):
+                metalist = f"./{self.date}.history_{rnk}.log"
+                _metalist_ = unpickler(metalist)
 
-            metalist = "./{}.history.log".format(self.date)
-            _metalist_ = unpickler(metalist)
+                # Decide which mode to open the hidden log file in based on whether it already exists
+                # or not and filter the list of files accordingly and iterate through them to process
+                # the remaining files. If the hidden log doesn't exist, just return a list of all files.
 
-            # Decide which mode to open the hidden log file in based on whether it already exists
-            # or not and filter the list of files accordingly and iterate through them to process
-            # the remaining files. If the hidden log doesn't exist, just return a list of all files.
+                try:
+                    next(_metalist_)
 
-            try:
+                    # The pipeline has run before. Restore previous state.
+                    for meta in _metalist_:
+                        _proc_files_.append(meta["fname"])
+                
+                except StopIteration:
+                    with open(metalist, "wb+") as _mem_:
+                        pickle.dump(self.config, _mem_)
+                    continue
 
-                next(_metalist_)
+            # Remove the files that have already been processed.
+            FILES = [FILE for FILE in FILES if FILE.name not in _proc_files_]
+            
+            # Distribute the files to be processed across different nodes.
+            n_files_per_rank = len(FILES) / NRANKS
+            # Note that (len(_files_) % NRANKS) might not be zero.
+            # If the number of files is not divisible by the number of ranks,
+            # the last rank will have to process lesser number of files than all the other ranks.
+            if n_files_per_rank % 1 != 0:
+                n_files_per_rank = int(n_files_per_rank) + 1
+            else:
+                n_files_per_rank = int(n_files_per_rank)
 
-                # The pipeline has run before. Restore previous state.
-
-                _filelist_ = [meta["fname"] for meta in _metalist_]
-                FILES = [f for f in _files_ if f.name not in _filelist_]
-
-            except StopIteration:
-
-                # Running from scratch. Initialise the list of files.
-
-                FILES = [_file_ for _file_ in _files_]
-
-                # Before processing starts, pickle the current pipeline configuration into
-                # the hidden log file, before it is too late.
-
-                with open(metalist, "wb+") as _mem_:
-                    pickle.dump(self.config, _mem_)
+            if RANK == NRANKS - 1: # If this is the last rank, process all the remaining files.
+                FILES = FILES[RANK * n_files_per_rank : ]
+            else:
+                FILES = FILES[RANK * n_files_per_rank : (RANK + 1) * n_files_per_rank]
 
             #####################################################################################
 
@@ -219,7 +222,6 @@ class PipelineWorker(object):
 
                     FIL_NAME = FILE.name
                     FIL_PATH = FILE.path
-
                     filterbank = Filterbank(
                         FIL_NAME,
                         FIL_PATH,
@@ -240,8 +242,8 @@ class PipelineWorker(object):
                     # Delete the filterbank file if we started with a "*.raw" file.
                     # Otherwise leave it be.
 
-                    if (EXT == ".raw") and (filterbank.path.endswith(".fil")):
-                        os.remove(filterbank.path)
+                    # if (EXT == ".raw") and (filterbank.path.endswith(".fil")):
+                    #     os.remove(filterbank.path)
 
             #####################################################################################
 
@@ -266,14 +268,9 @@ class PipelineManager(object):
         """
 
         self.config = config
-        self.make_dirs(self.config.rfi_path, self.config.state_path)
+        make_dirs(dirs=[self.config.rfi_path, self.config.state_path])
 
         self.Worker = PipelineWorker(config)
-
-    def make_dirs(self, rfi_path, state_path):
-
-        os.makedirs(rfi_path, exist_ok=True)
-        os.makedirs(state_path, exist_ok=True)
 
     def process(self):
 

@@ -29,10 +29,10 @@ parser = argparse.ArgumentParser(
 parser.add_argument(
     "-config",
     type=str,
-    default="./configurations/ghrss_config.yaml",
+    default="./configurations/LPTs_config.yaml",
     help=textwrap.dedent(
         """
-                    The path to the "ghrss_config.yaml" file."""
+                    The path to the "LPTs_config.yaml" file."""
     ),
 )
 

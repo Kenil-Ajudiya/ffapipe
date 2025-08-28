@@ -4,11 +4,11 @@ name: "longer"
 search:
     period_min: 10.00
     period_max: 100.00
-    bins_min: 960
-    bins_max: 1040
+    bins_min: 750
+    bins_max: 800
     fpmin: 10
-    rmed_width: 10.0
-    rmed_minpts: 101
+    rmed_width: 20.0
+    rmed_minpts: 20
     wtsp: 1.5
     threads: 1
 

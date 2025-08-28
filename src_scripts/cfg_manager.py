@@ -14,7 +14,7 @@ class CfgManager(object):
 
     """ Class that extracts and stores the current configuration of the pipeline. """
 
-    def __init__(self, config_file, backend):
+    def __init__(self, config_file, backend, allscans, RANK, NRANKS):
 
         """Create a new CfgManager object that extracts and stores the current
         configuration of the pipeline. All pipeline and path variables are stored
@@ -30,13 +30,17 @@ class CfgManager(object):
                 Could be one of:
 
                 1. GMRT Software Backend (GSB),
-                2. GMRT Wideband Backend (GWB), or
-                3. SIMulated GWB data (SIM).
+                2. GMRT Wideband Backend (GWB),
+                3. SPOTLIGHT, or
+                4. SIMulated GWB data (SIM).
 
             The SIM backend is used only for testing purposes.
         """
 
         self.backend = backend
+        self.RANK = RANK
+        self.NRANKS = NRANKS
+        self.allscans = allscans
         self._config = self.parse_yaml_config(config_file)
 
     ### Pipeline variables. ###
@@ -47,39 +51,20 @@ class CfgManager(object):
         return self._config["pipeline_variables"]["cores"]
 
     @property
-    def nodes(self):
-        """ List of node ID(s). """
-        nodes = self._config["pipeline_variables"]["nodes"]
-        nodes = [d.strip() for d in nodes.split(",")]
-        return nodes
-
-    @property
-    def mach_config(self):
-        """The machine configuration ("single" or "multiple").
-        Decided by looking at the list of node ID(s) entered by
-        user in the configuration file.
-        """
-        if len(self.nodes) == 1:
-            mach_config = "single"
-        else:
-            mach_config = "multiple"
-
-        return mach_config
-
-    @property
     def analysis_dates(self):
         """ The dates to be analysed. Filtered by backend. """
-        dates = str(self._config["pipeline_variables"]["dates"][self.backend])
-        dates = [d.strip() for d in dates.split(",")]
-        dates = dates[:5]
+        if self.allscans:
+            dates = [d for d in os.listdir(self.store_path)
+                if os.path.isdir(os.path.join(self.store_path, d))]
+        else:
+            dates = str(self._config["pipeline_variables"]["dates"][self.backend])
+            dates = [d.strip() for d in dates.split(",")]
         return dates
 
     @property
     def variables(self):
         """ All pipeline variables compiled into a dictionary. """
         VarDict = {
-            "nodes": self.nodes,
-            "mach_config": self.mach_config,
             "backend": self.backend,
             "cores": self.cores,
             "analysis_dates": self.analysis_dates,
@@ -93,6 +78,11 @@ class CfgManager(object):
     def store_path(self):
         """ The absolute path where all inputs are stored. """
         return self._config["path_variables"]["store_path"].rstrip(os.path.sep)
+    
+    @property
+    def output_path(self):
+        """ The absolute path where all outputs are stored. """
+        return self._config["path_variables"]["output_path"].rstrip(os.path.sep)
 
     @property
     def pipeline_path(self):
@@ -122,12 +112,12 @@ class CfgManager(object):
     @property
     def rfi_path(self):
         """ The absolute path where all RFI masks are stored. """
-        return os.path.join(os.path.dirname(self.store_path), "RFI")
+        return os.path.join(self.output_path, "RFI")
 
     @property
     def state_path(self):
         """ The absolute path where all output files are stored. """
-        return os.path.join(os.path.dirname(self.store_path), "state")
+        return os.path.join(self.output_path, "state")
 
     @property
     def paths(self):

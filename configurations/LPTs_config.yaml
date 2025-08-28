@@ -10,11 +10,7 @@
 # 
 # PIPELINE VARIABLES:
 #    
-#    nodes: The particular nodes where you wish to process data.
-#           For a single, stand-alone machine, just specify the
-#           node id of that machine.    
-#                
-#    dates: The particular dates for which you wish to process 
+#    scans: The particular scans for which you wish to process 
 #           data. Three different date lists can be defined in
 #           this file, one for each type of possible backend.
 #           The possible backends are:
@@ -23,13 +19,13 @@
 #               3. SIMulated Telescope Data (SIM)
 #           The main setup script, "setup_ffa.py", differentiates
 #           between the different backend types and chooses the
-#           dates accordingly.
+#           scans accordingly.
 #            
 #    cores: The number of cores on each node.
 #    
 # PATH VARIABLES:
 #    
-#    store_path:    The absolute path of the directory in which the
+#       store_path: The absolute path of the directory in which the
 #                   data is present in each node.
 #    pipeline_path: The absolute path of the directory in which all
 #                   pipeline scripts are stored.
@@ -62,30 +58,32 @@
 
 pipeline_variables:
 
-    cores: 32
-    nodes: fs10 
+    cores: 42
 
-# Multiple dates can be defined here. However, keep in mind that only one line
-# should remain uncommented. The dates left uncommented (for all the 3 different
+# Multiple scans can be defined here. However, keep in mind that only one line
+# should remain uncommented. The scans left uncommented (for all the 3 different
 # types of backend) would be the only ones that would be read and processed by
-# the pipeline. While uncommenting dates, make sure to keep indentation consistent
-# (otherwise the .yaml file won't be parsed at all).
+# the pipeline. While uncommenting scans, make sure to keep indentation consistent
+# (otherwise the .yaml file won't be parsed at all). All the files in all the scan 
+# directories will be processed.
 
     dates:
-        GSB: TEST 
-#       GSB: 2020-11-10, 2020-11-11, 2020-11-12, 2020-11-13, 2020-11-14
-        GWB: HR_1936-30 
-#       GWB: 2020-11-10, 2020-11-11, 2020-91-12, 2020-11-13, 2020-11-14
-        SIM: 30-11-2013_1
-#       SIM: 2020-11-10, 2020-11-11, 2020-11-12, 2020-11-13, 2020-11-14
+        # GSB: TEST 
+        # GSB: 2020-11-10, 2020-11-11, 2020-11-12, 2020-11-13, 2020-11-14
+        # GWB: HR_1936-30 
+        # GWB: 2020-11-10, 2020-11-11, 2020-91-12, 2020-11-13, 2020-11-14
+        SPOTLIGHT: J0901-4046_20250824_114802
+        # SIM: 30-11-2013_1
+        # SIM: 2020-11-10, 2020-11-11, 2020-11-12, 2020-11-13, 2020-11-14
     
 path_variables:
 
-    store_path: /Data/ssingh/GWB_processing/store/ 
-    pipeline_path: /Data/ssingh/softwares/GHRSS_FFA_Pipeline_GWB.ver2/
+    store_path: /lustre_data/spotlight/data/TST_FFA_20250824_111336/FilData_dwnsmp/
+    output_path: /lustre_archive/gnsmdev/Kenil/test_ffapipe/output_dir
+    pipeline_path: /lustre_archive/gnsmdev/Kenil/ffapipe/
 
 RFI Masking:
-
+    
     Bad channels: 
         GSB: 1:20,1000:1024
         GWB: 1:650,2400:2800,4000:4096
@@ -109,6 +107,13 @@ DDPlan:
         dDM: 0.10
         DS: 16
         numDMs: 5000
+    SPOTLIGHT:
+        DM_highest: 500
+        DM_lowest: 0
+        nsub: 128
+        dDM: 1.0
+        DS: 1
+        numDMs: 500
     SIM:    
         DM_highest: 500
         DM_lowest: 0

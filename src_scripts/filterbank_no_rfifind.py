@@ -7,6 +7,7 @@ import re
 import shlex
 import timeit
 import logging
+import warnings
 import subprocess
 
 from datetime import datetime
@@ -138,7 +139,7 @@ class Filterbank(object):
 
         _formatter_ = logging.Formatter(fmt="%(message)s")
 
-        _handler_ = logging.FileHandler("./{}.PIDS.log".format(self.date), mode="w+")
+        _handler_ = logging.FileHandler(f"./{self.date}.PIDS_{self.config.RANK}.log", mode="w+")
 
         _handler_.setFormatter(_formatter_)
 
@@ -513,7 +514,7 @@ class Filterbank(object):
             # If zeroDM filtering is done, change the extension
             # to ".zeroDM.fil"
 
-            if (self.config.backend == "GWB") or (self.config.backend == "SIM"):
+            if (self.config.backend == "GWB") or (self.config.backend == "SPOTLIGHT") or (self.config.backend == "SIM"):
 
                 self.name = self.name.replace(".raw", ".fil")
                 self.path = self.path.replace(".raw", ".fil")
@@ -720,14 +721,16 @@ class Filterbank(object):
 
         os.makedirs(images_path, exist_ok=True)
 
-        for plot_batch in plot_batches:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            for plot_batch in plot_batches:
 
-            for candidate in plot_batch:
+                for candidate in plot_batch:
 
-                cand_plot_obj = CandidatePlot(Candidate.load_hdf5(candidate.path))
-                cand_plot_obj.saveimg(
-                    os.path.join(images_path, candidate.name.replace(".h5", ".png"))
-                )
+                    cand_plot_obj = CandidatePlot(Candidate.load_hdf5(candidate.path))
+                    cand_plot_obj.saveimg(
+                        os.path.join(images_path, candidate.name.replace(".h5", ".png"))
+                    )
 
         self.logger.info(
             "All candidates plotted. "
@@ -736,14 +739,13 @@ class Filterbank(object):
         )
 
         # Turn all PNG files into a single PDF and delete the "png" directory.
-
         make_pdf(images_path, plot_path)
-        proc_rm = subprocess.Popen(
-            "rm -rf {}".format(images_path),
-            shell=True,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
+        # proc_rm = subprocess.Popen(
+        #     "rm -rf {}".format(images_path),
+        #     shell=True,
+        #     stdout=subprocess.DEVNULL,
+        #     stderr=subprocess.DEVNULL,
+        # )
 
         # Delete all timeseries because we are done with them now.
 
@@ -928,18 +930,35 @@ class Filterbank(object):
         start_time = timeit.default_timer()
 
         self.make_fil()
+        make_fil_time = timeit.default_timer()
+
         self.make_dirs()
         self.load_header()
+        
+        start_dedisp_time = timeit.default_timer()
+        self.logger.info("Starting dedispersion...")
         self.para_dedisp()
-        self.fast_folding()
-        self.plot_candidates()
-        self.fold_profiles()
-        self.archive_profiles()
-        self.clean_profiles()
+        dedisp_time = timeit.default_timer()
 
+        self.logger.info("Starting FFA search...")
+        self.fast_folding()
+        FFA_time = timeit.default_timer()
+
+        self.plot_candidates()
+        plot_time = timeit.default_timer()
+
+        # self.fold_profiles()
+        # self.archive_profiles()
+        # self.clean_profiles()
+        
         self.metadata = Meta(self._attrs_)
 
         end_time = timeit.default_timer()
-        self._cumulative_walltime = end_time - start_time
+        self._cumulative_walltime = (end_time - start_time)
         self.logger.info("Done processing {}.".format(self.output_name))
+        self.logger.info("Time taken to make filterbank files: {}".format(timedelta(seconds=(make_fil_time - start_time))))
+        self.logger.info("Time taken to make directories and load header: {}".format(timedelta(seconds=(start_dedisp_time - make_fil_time))))
+        self.logger.info("Time taken for dedispersion: {}".format(timedelta(seconds=(dedisp_time - start_dedisp_time))))
+        self.logger.info("Time taken for FFA search: {}".format(timedelta(seconds=(FFA_time - dedisp_time))))
+        self.logger.info("Time taken for plotting candidates: {}".format(timedelta(seconds=(plot_time - FFA_time))))
         self.logger.info("Total processing time: {}".format(self.cumulative_walltime()))
