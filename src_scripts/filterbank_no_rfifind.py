@@ -740,12 +740,12 @@ class Filterbank(object):
 
         # Turn all PNG files into a single PDF and delete the "png" directory.
         make_pdf(images_path, plot_path)
-        # proc_rm = subprocess.Popen(
-        #     "rm -rf {}".format(images_path),
-        #     shell=True,
-        #     stdout=subprocess.DEVNULL,
-        #     stderr=subprocess.DEVNULL,
-        # )
+        proc_rm = subprocess.Popen(
+            "rm -rf {}".format(images_path),
+            shell=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
 
         # Delete all timeseries because we are done with them now.
 

@@ -78,9 +78,9 @@ pipeline_variables:
     
 path_variables:
 
-    store_path: /lustre_data/spotlight/data/TST_FFA_20250824_111336/FilData_dwnsmp/
-    output_path: /lustre_archive/gnsmdev/Kenil/test_ffapipe/output_dir
-    pipeline_path: /lustre_archive/gnsmdev/Kenil/ffapipe/
+    store_path: /lustre_data/spotlight/data/48_157_20250825_112042/FilData_dwnsmp
+    output_path: /lustre_data/spotlight/data/48_157_20250825_112042/FFAPipeData
+    pipeline_path: /lustre_archive/apps/tdsoft/ffapipe/
 
 RFI Masking:
     

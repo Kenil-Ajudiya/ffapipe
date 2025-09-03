@@ -5,3 +5,4 @@
 *.py[cod]
 __pycache__
 .mypy_cache
+cmd_ffapipe.sh
