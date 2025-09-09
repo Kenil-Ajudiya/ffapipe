@@ -72,14 +72,14 @@ pipeline_variables:
         # GSB: 2020-11-10, 2020-11-11, 2020-11-12, 2020-11-13, 2020-11-14
         # GWB: HR_1936-30 
         # GWB: 2020-11-10, 2020-11-11, 2020-91-12, 2020-11-13, 2020-11-14
-        SPOTLIGHT: J0901-4046_20250824_114802
+        SPOTLIGHT: AT2023CVB_20250802_182957
         # SIM: 30-11-2013_1
         # SIM: 2020-11-10, 2020-11-11, 2020-11-12, 2020-11-13, 2020-11-14
     
 path_variables:
 
-    store_path: /lustre_data/spotlight/data/48_157_20250825_112042/FilData_dwnsmp
-    output_path: /lustre_data/spotlight/data/48_157_20250825_112042/FFAPipeData
+    store_path: /lustre_data/spotlight/data/48_056_20250802_180207/FilData_dwnsmp
+    output_path: /lustre_data/spotlight/data/48_056_20250802_180207/FFAPipeData
     pipeline_path: /lustre_archive/apps/tdsoft/ffapipe/
 
 RFI Masking:

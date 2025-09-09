@@ -86,152 +86,116 @@ generate_mpi_files() {
     fi
 }
 
-xtraction() {
-    BEAM_DIR="${OBS_DIR}/BeamData"
-    FIL_DIR="${OBS_DIR}/FilData_dwnsmp"
-    EXP_COUNT=$((nbeams*nhosts))
-    UPPER=$((nhosts-1))
-    echo "Expected number of filterbank files per scan: $EXP_COUNT"
+xtract_N_chk() {
+    RAW_FILES=$(eval echo "$BEAM_DIR/$SCAN.raw.{0..$UPPER}")
+    remote_output=$(ssh -t -t "${nodes_list[0]}" "
+        source ${TDSOFT}/env.sh;
+        xtract2fil \
+            ${RAW_FILES} \
+            --output ${OBS_DIR} \
+            --scan ${SCAN} \
+            --dual \
+            --tbin ${tbin} \
+            --fbin ${fbin} \
+            --nbeams ${nbeams} \
+            --njobs ${njobs} \
+            --offset ${offset};
+        echo \$?")
 
-    if [[ ! -d "$FIL_DIR" ]]; then
-        mkdir "$FIL_DIR"
-    fi
-
-    # If the FilData_dwnsmp directory does not have any filterbank files in the scan directories,
-    # then extract the SPOTLIGHT beams from the beam data (.raw files) using xtract2fil.
-    FIL_COUNT=$(ls -1 "$FIL_DIR"/*/*.fil 2>/dev/null | wc -l)
-    if (( FIL_COUNT <= 0 )); then
-
-        echo "INFO: No filterbank files found in the scan directories in $FIL_DIR. Attempting to extract from raw files..."
-
-        if [[ -z $(ls -1 "$BEAM_DIR"/*.raw.0 2>/dev/null) ]]; then
-            echo "ERROR: No raw files found in $BEAM_DIR."
-            STATUS=1
-        else
-            for SCAN in $(basename -s .raw.0 "${BEAM_DIR}"/*.raw.0); do
-                echo "Splicing beams and creating filterbank file for scan: $SCAN"
-                if [[ ! -d "$FIL_DIR/$SCAN" ]]; then
-                    mkdir "$FIL_DIR/$SCAN"
-                fi
-
-                RAW_FILES=$(eval echo "$BEAM_DIR/$SCAN.raw.{0..$UPPER}")
-                xtract2fil $RAW_FILES --output "$FIL_DIR/$SCAN" --tbin "$tbin" --fbin "$fbin" --nbeams "$nbeams" --njobs "$njobs" --offset "$offset"
-
-                # Check if everything went well...
-                XTRACT_COUNT=$(ls -1 "$FIL_DIR/$SCAN"/*.fil 2>/dev/null | wc -l)
-                if (( XTRACT_COUNT == EXP_COUNT )); then
-                    echo "INFO: Successfully extracted the beams into filterbank files for scan: $SCAN"
-                else
-                    if (( XTRACT_COUNT <= 0 )); then
-                        echo "ERROR: xtract2fil failed for scan: $SCAN. No filterbank files found."
-                    else
-                        echo "ERROR: Could not create the expected number of filterbank files for scan: $SCAN"
-                        echo "HELP: Ecpecting (NBEAMS x NHOSTS), i.e., $EXP_COUNT filterbank files."
-                    fi
-                    echo "WARNING: Scan $SCAN will not be processed. Removing the scan directory."
-                    rm -rf "$FIL_DIR/$SCAN"
-                fi
-            done
-        fi
-
-    else # If some of the directories have filterbank files, then attempt to extract missing files.
-        for SCAN_DIR in "$FIL_DIR"/*; do
-            [[ -d "$SCAN_DIR" ]] || continue  # Only process directories
-            SCAN=$(basename "$SCAN_DIR")
-            FIL_COUNT=$(ls -1 "$SCAN_DIR"/*.fil 2>/dev/null | wc -l)
-            if (( FIL_COUNT <= 0 )); then
-                echo "WARNING: No filterbank files found for scan: $SCAN."
-                echo "Trying to extract filterbank files using xtract2fil..."
-
-                if [[ -z $(ls -1 "$BEAM_DIR"/$SCAN.raw.0 2>/dev/null) ]]; then
-                    echo "ERROR: $BEAM_DIR/$SCAN.raw.0 raw file not found."
-                    continue
-                fi
-
-                RAW_FILES=$(eval echo "$BEAM_DIR/$SCAN.raw.{0..$UPPER}")
-                xtract2fil $RAW_FILES --output "$FIL_DIR/$SCAN" --tbin "$tbin" --fbin "$fbin" --nbeams "$nbeams" --njobs "$njobs" --offset "$offset"
-
-                XTRACT_COUNT=$(ls -1 "$FIL_DIR/$SCAN"/*.fil 2>/dev/null | wc -l)
-                if (( XTRACT_COUNT == EXP_COUNT )); then
-                    echo "INFO: Successfully extracted the beams into filterbank files for scan: $SCAN"
-                else
-                    if (( XTRACT_COUNT <= 0 )); then
-                        echo "ERROR: xtract2fil failed for scan: $SCAN. No filterbank files found."
-                    else
-                        echo "ERROR: Could not create the expected number of filterbank files for scan: $SCAN"
-                        echo "HELP: Ecpecting (NBEAMS x NHOSTS), i.e., $EXP_COUNT filterbank files."
-                    fi
-                    echo "WARNING: Scan $SCAN will not be processed. Removing the scan directory."
-                    rm -rf "$FIL_DIR/$SCAN"
-                fi
-            else
-                if (( FIL_COUNT == EXP_COUNT )); then
-                    echo "INFO: Found the expected number of filterbank files for scan: $SCAN"
-                else
-                    echo "WARNING: Did not find the expected number of filterbank files for scan: $SCAN"
-                    echo "HELP: Ecpecting (NBEAMS x NHOSTS), i.e., $EXP_COUNT filterbank files."
-                    echo "Proceeding with the available filterbank files."
-                fi
-            fi
-        done
-    fi
-
-    # Remove the $FIL_DIR directory if it is empty.
-    if [[ -z "$(ls -A $FIL_DIR)" ]]; then
-        echo "ERROR: $FIL_DIR is empty. Removing and exiting."
-        rm -rf "$FIL_DIR"
+    local_ssh_status=$?
+    if [ "$local_ssh_status" -eq 255 ]; then
+        echo "SSH connection failed."
+        echo "HELP: SSH command exit status: $local_ssh_status"
         exit 1
     fi
-
-    echo "Extraction complete."
+    exit_code=$(echo "$remote_output" | tail -n 1 | tr -d '\r')
+    if [ "$exit_code" -eq 0 ]; then
+        echo "INFO: Successfully extracted the beams into filterbank files for scan: $SCAN"
+        cp "$BEAM_DIR/$SCAN.raw.0.ahdr" "$output_dir"
+    else
+        echo "$remote_output"
+        echo "ERROR: xtract2fil command failed for scan: $SCAN with exit code $exit_code."
+    fi
 }
 
 analysis() {
+    EXP_COUNT=$((nbeams*nhosts))
+    UPPER=$((nhosts-1))
+
     # Read non-comment, non-empty lines into an array
     mapfile -t obs_dirs < <(grep -v '^[[:space:]]*#' "$input_obs_file" | grep -v '^[[:space:]]*$')
+    echo "Observation directories to be processed: ${obs_dirs[*]}"
 
     # Final checks and launch the FFA processing script
     for OBS_DIR in "${obs_dirs[@]}"; do
-        # Skip lines that are empty or start with a comment
-        [[ -z "$OBS_DIR" ]] && continue
-        [[ "$OBS_DIR" =~ ^[[:space:]]*# ]] && continue
-
-        if [[ -z "$OBS_DIR" ]]; then
-            echo "Skipping empty line in input observation file."
-            continue # Skip empty lines
-        fi
-
         if [[ ! -d "$OBS_DIR" ]]; then
             echo "ERROR: Observation directory '$OBS_DIR' does not exist or is not a directory."
             continue # Skip to the next line if the directory is invalid
         fi
 
         echo "Starting to process the following observation: $OBS_DIR"
-        
-        if [[ "$backend" == "SPOTLIGHT" ]]; then
-            STATUS=0
-            xtraction
-            if [[ $STATUS == "1" ]]; then continue 
-            fi
-        fi
 
-        # Modify the LPTs_config.yaml file with the input observation directory.
-        sed -i "81c\    store_path: $FIL_DIR" $FFA_CONFIG
         if [[ "$output_dir" == "obs" ]]; then
             output_dir="$OBS_DIR/FFAPipeData"
             if [[ ! -d "$output_dir" ]]; then
                 mkdir "$output_dir"
             fi
         fi
-        sed -i "82c\    output_path: $output_dir" $FFA_CONFIG
-        
-        # Launch the FFA processing script with the specified parameters
-        mpirun \
-            -np ${NRANKS} \
-            --hostfile "${HOSTFILE}" \
-            --map-by rankfile:file="${RANKFILE}" \
-            "${LAUNCH_FFAPIPE}" "$flag_a" "$backend"
 
+        if [[ "$backend" == "SPOTLIGHT" ]]; then
+            BEAM_DIR="${OBS_DIR}/BeamData"
+            FIL_DIR="${OBS_DIR}/FilData_dwnsmp"
+
+            # Modify the LPTs_config.yaml file with the input observation directory.
+            sed -i "81c\    store_path: $FIL_DIR" $FFA_CONFIG
+            sed -i "82c\    output_path: $output_dir" $FFA_CONFIG
+
+            if [[ ! -d "$BEAM_DIR" ]]; then
+                echo "ERROR: Beam data directory '$BEAM_DIR' does not exist."
+                continue # Skip to the next observation directory
+            else
+                for SCAN in "$BEAM_DIR"/*.raw.0.ahdr; do
+                    SCAN=$(basename -s .raw.0.ahdr "$SCAN")
+                    if [[ -d "$FIL_DIR/$SCAN" ]] && (( $(ls "$FIL_DIR/$SCAN" | wc -l) == EXP_COUNT )); then
+                        echo "INFO: Found the expected number of filterbank files for the scan: $SCAN."
+                    else
+                        echo "INFO: Couldn't find the expected number of filterbank files for the scan: $SCAN."
+                        echo "Attempting to extract beams using xtract2fil."
+                        if [[ ! -f "$BEAM_DIR/$SCAN.raw.0" ]]; then
+                            echo "ERROR: Raw file '$BEAM_DIR/$SCAN.raw.0' does not exist. Cannot run xtract2fil."
+                            continue
+                        else
+                            STATUS=0
+                            xtract_N_chk
+                            if [[ $STATUS == "1" ]]; then continue; fi
+                        fi
+                    fi
+                    # Modify the LPTs_config.yaml file with the scan directory.
+                    sed -i "75c\        SPOTLIGHT: $SCAN" $FFA_CONFIG
+                    # Launch the FFA processing script with the specified parameters
+                    mpirun \
+                        -np ${NRANKS} \
+                        --hostfile "${HOSTFILE}" \
+                        --map-by rankfile:file="${RANKFILE}" \
+                        "${LAUNCH_FFAPIPE}" "false" "$backend"
+
+                    # Combine all the PDFs in the BM** directories into a single PDF.
+                    OP_SCAN_DIR=${output_dir}/state/$SCAN
+                    pdfunite "$OP_SCAN_DIR"/*/candidates/candidate_plts.pdf "$OP_SCAN_DIR/$(basename "$OP_SCAN_DIR")_candidates.pdf"
+                done
+            fi
+        else
+            # Modify the LPTs_config.yaml file with the input observation directory.
+            sed -i "81c\    store_path: $OBS_DIR" $FFA_CONFIG
+            sed -i "82c\    output_path: $output_dir" $FFA_CONFIG
+            
+            # Launch the FFA processing script with the specified parameters
+            mpirun \
+                -np ${NRANKS} \
+                --hostfile "${HOSTFILE}" \
+                --map-by rankfile:file="${RANKFILE}" \
+                "${LAUNCH_FFAPIPE}" "$flag_a" "$backend"
+        fi
     done
 }
 
@@ -399,8 +363,11 @@ main() {
     generate_mpi_files
     echo "MPI hostfile and rankfile generated."
     echo "Starting analysis..."
+    echo "FFAPipe status = ON" > /lustre_archive/spotlight/data/MON_DATA/das_log/FFAPipe_status.log
+    echo "Nodes = ${nodes_list[@]}" >> /lustre_archive/spotlight/data/MON_DATA/das_log/FFAPipe_status.log
     analysis
     echo "Analysis completed."
+    echo "FFAPipe status = OFF" > /lustre_archive/spotlight/data/MON_DATA/das_log/FFAPipe_status.log
 }
 
 TDSOFT="/lustre_archive/apps/tdsoft"
