@@ -14,6 +14,35 @@ import numpy as np
 
 from PIL import Image
 
+class MultiColorFormatter(logging.Formatter):
+    LOG_LEVEL_NUM = 25
+    logging.addLevelName(LOG_LEVEL_NUM, "LOG")
+    # Define colors
+    COLORS = {
+        'DEBUG': '\033[95m',    # Bright Magenta
+        'INFO': '\033[96m',     # Bright Cyan
+        'LOG': '\033[92m',      # Bright Green
+        'WARNING': '\033[93m',  # Bright Yellow
+        'ERROR': '\033[91m',    # Bright Red
+        'CRITICAL': '\033[41m', # Red background
+    }
+    BOLD = '\033[1m'
+    RESET = '\033[0m'
+
+    def format(self, record):
+        if record.levelname == 'INFO':
+            color = self.COLORS[record.levelname]
+            dt = color + self.formatTime(record, "%Y-%m-%d %H:%M:%S")
+            lvl = record.levelname
+            msg = self.RESET + record.getMessage()
+        else:
+            color = self.BOLD + self.COLORS[record.levelname]
+            dt = color + self.formatTime(record, "%Y-%m-%d %H:%M:%S")
+            lvl = record.levelname
+            msg = record.getMessage() + self.RESET
+
+        return f"{dt} # {lvl} # {msg}"
+
 def unpickler(path):
 
     """ Unpickle a log file containing several pickled objects.

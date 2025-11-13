@@ -12,7 +12,7 @@ from concurrent.futures import ProcessPoolExecutor as Pool
 
 ### Local imports ###
 
-from .utilities import unpickler, grouper, filter_by_ext
+from .utilities import unpickler, grouper, filter_by_ext, MultiColorFormatter
 from .filterbank_no_rfifind import Filterbank
 
 # from .filterbank import Filterbank
@@ -96,15 +96,16 @@ class PipelineWorker(object):
         self.logger = logging.getLogger(_logger_name_)
         self.logger.setLevel(level)
 
-        formatter = logging.Formatter(
-            fmt="%(asctime)s || %(name)s || %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
-        )
+        formatter = logging.Formatter(fmt="%(asctime)s || %(name)s || %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
 
         if not self.logger.handlers:
-
             handler = logging.FileHandler(log_path)
             handler.setFormatter(formatter)
             self.logger.addHandler(handler)
+
+            stream_handler = logging.StreamHandler()
+            stream_handler.setFormatter(MultiColorFormatter())
+            self.logger.addHandler(stream_handler)
 
     def cumulative_walltime(self):
 
@@ -154,7 +155,7 @@ class PipelineWorker(object):
 
         if EXT:
 
-            self.logger.info(f"Start processing data for date {self.date}.")
+            self.logger.log(MultiColorFormatter.LOG_LEVEL_NUM, f"Start processing data for date {self.date}.")
             start_time = timeit.default_timer()
 
             _files_ = filter_by_ext(self.date_path, extension=EXT)
@@ -244,13 +245,16 @@ class PipelineWorker(object):
 
                     # if (EXT == ".raw") and (filterbank.path.endswith(".fil")):
                     #     os.remove(filterbank.path)
+                with open(filelist, "r") as f:
+                    line_count = sum(1 for _ in f)
+                self.logger.info(f"Number of beams processed so far: {line_count}")
 
             #####################################################################################
 
         end_time = timeit.default_timer()
         self._cumulative_walltime = end_time - start_time
-        self.logger.info("Done processing date {}.".format(self.date))
-        self.logger.info("Total processing time: {}".format(self.cumulative_walltime()))
+        self.logger.log(MultiColorFormatter.LOG_LEVEL_NUM, f"Done processing date {self.date}.")
+        self.logger.log(MultiColorFormatter.LOG_LEVEL_NUM, f"Total processing time: {self.cumulative_walltime()}.")
 
 
 class PipelineManager(object):

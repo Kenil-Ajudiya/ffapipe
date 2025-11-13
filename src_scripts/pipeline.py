@@ -21,23 +21,22 @@ from riptide.pipelines import Candidate
 from riptide.clustering import cluster_1d
 from riptide.reading import PrestoInf, SigprocHeader
 from riptide.pipelines.harmonic_filtering import flag_harmonics
+logging.getLogger("Candidate").setLevel(logging.WARNING)
+
+from utilities import MultiColorFormatter
 
 def parse_yaml_config(fname):
     with open(fname, 'r') as fobj:
         config = yaml.load(fobj)
     return config
 
-def get_logger(name, level=logging.INFO):
+def configure_logger(name, level=logging.INFO):
     logger = logging.getLogger(name)
     logger.setLevel(level)
 
-    formatter = logging.Formatter(
-        fmt="%(asctime)s.%(msecs)03d - %(name)s - %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S"
-        )
     if not logger.handlers:
         handler = logging.StreamHandler()
-        handler.setFormatter(formatter)
+        handler.setFormatter(MultiColorFormatter())
         logger.addHandler(handler)
     return logger
 
@@ -83,7 +82,6 @@ def sort_dataframe_by_column(df, column):
     else:
         return df.sort(column)
 
-
 class DetectionCluster(list):
     """ Cluster of Detection objects. """
     def __init__(self, detections):
@@ -108,8 +106,6 @@ class DetectionCluster(list):
     def __repr__(self):
         return str(self)
 
-
-
 class PulsarSearchWorker(object):
     """ Function-like object that takes a single TimeSeries as an argument,
     and outputs a list of detections. This is to circumvent a limitation of
@@ -129,8 +125,6 @@ class PulsarSearchWorker(object):
         ts, plan, pgram = ffa_search(tseries, **self.config['search'])
         dets = find_peaks(pgram, **self.config['detect'])
         return dets
-
-
 
 class PulsarSearch(object):
     """ Gets fed time series and accumulates detections at various DM trials
@@ -153,7 +147,8 @@ class PulsarSearch(object):
         """
         self.manager = manager
         self.config = config
-        self.configure_logger()
+        logger_name = '.'.join(['PulsarSearch', self.name])
+        self.logger = configure_logger(logger_name)
         self._cumulative_walltime = 0.0
         self.detections = []
         self.clusters = []
@@ -171,10 +166,6 @@ class PulsarSearch(object):
         process_time_series_batch() method, in seconds. """
         return self._cumulative_walltime
 
-    def configure_logger(self):
-        logger_name = '.'.join(['PulsarSearch', self.name])
-        self.logger = get_logger(logger_name)
-
     def process_time_series_batch(self, batch):
         """ Processes several time series in parallel using the muliprocessing
         module.
@@ -189,23 +180,23 @@ class PulsarSearch(object):
 
         # Split the TimeSeries to search between processes
         # 'output' is a list of lists of Detections
-        self.logger.info("Searching batch of {:d} TimeSeries using {:d} worker processes ...".format(len(batch), self.num_processes))
+        self.logger.info(f"Searching batch of {len(batch):d} TimeSeries using {self.num_processes:d} worker processes...")
         output = pool.map(PulsarSearchWorker(self.config), batch)
         pool.close()
         pool.join()
 
         # Accumulate the new Detections
         new_detections = [det for sublist in output for det in sublist]
-        self.logger.info("Search complete. New detections: {:d}".format(len(new_detections)))
+        self.logger.info(f"Search complete. New detections: {len(new_detections):d}")
         self.detections = self.detections + new_detections
-        self.logger.info("Total detections stored: {:d}".format(len(self.detections)))
+        self.logger.info(f"Total detections stored: {len(self.detections):d}")
 
         end_time = timeit.default_timer()
         self._cumulative_walltime += (end_time - start_time)
-        self.logger.info("Total processing time: {:.2f} seconds".format(self.cumulative_walltime()))
+        self.logger.info(f"Time taken to process the time series batch: {self.cumulative_walltime():.2f} seconds")
 
     def cluster_detections(self):
-        self.logger.info("Clustering Detections ...")
+        self.logger.info("Clustering Detections...")
         if not self.detections:
             self.logger.info("No Detections in store. Nothing to be done.")
             return
@@ -221,9 +212,7 @@ class PulsarSearch(object):
             DetectionCluster([self.detections[ii] for ii in indices])
             for indices in cluster_indices
             ]
-        self.logger.info("Clustering complete. Total Clusters: {0:d}".format(len(self.clusters)))
-
-
+        self.logger.info(f"Clustering complete. Total Clusters: {len(self.clusters):d}")
 
 class PipelineManager(object):
     """ Responsible for the outermost DM loop and top-level pulsar search
@@ -244,12 +233,13 @@ class PipelineManager(object):
             specified through the command line arguments of this script.
         """
         self.logger = None
-        self.configure_logger()
+        logger_name = 'PipelineManager'
+        self.logger = configure_logger(logger_name)
 
         self.config_path = os.path.realpath(config_path)
         self.config = parse_yaml_config(self.config_path)
         self.config.update(override_keys)
-        self.logger.info("Loaded PipelineManager configuration file: {:s}".format(self.config_path))
+        self.logger.info(f"Loaded PipelineManager configuration file: {os.path.basename(self.config_path)}")
 
         self.detections = []
         self.clusters = []
@@ -258,10 +248,6 @@ class PipelineManager(object):
         self.configure_loaders()
         self.configure_searches()
 
-    def configure_logger(self):
-        logger_name = 'PipelineManager'
-        self.logger = get_logger(logger_name)
-
     def configure_searches(self):
         self.searches = []
         config_dir, config_name = os.path.split(self.config_path)
@@ -269,8 +255,8 @@ class PipelineManager(object):
             search_config_path = os.path.join(config_dir, search_config_fname)
             search = PulsarSearch(self, parse_yaml_config(search_config_path))
             self.searches.append(search)
-            self.logger.info("Configured PulsarSearch '{:s}'".format(search.name))
-        self.logger.info("Configured a total of {:d} searches.".format(len(self.searches)))
+            self.logger.info(f"Configured PulsarSearch '{search.name}'")
+        self.logger.info(f"Configured a total of {len(self.searches)} searches.")
 
     def configure_loaders(self):
         fmt = self.config['data_format'].strip().lower()
@@ -281,15 +267,15 @@ class PipelineManager(object):
             self.loader = TimeSeries.from_sigproc
             self.dm_getter = lambda fname: SigprocHeader(fname)['refdm']
         else:
-            raise ValueError("Invalid data format '{s}'".format(fmt))
-        self.logger.info("Specified file format: {:s}".format(fmt))
+            raise ValueError(f"Invalid data format '{fmt}'")
+        self.logger.info(f"Specified file format: {fmt}")
 
     def select_dm_trials(self):
         """ Build a list of files to process """
         glob_pattern = self.config['glob']
         filenames = sorted(glob.glob(glob_pattern))
-        self.logger.info("Found a total of {:d} file names corresponding to specified pattern \"{:s}\"".format(len(filenames), glob_pattern))
-        self.logger.info("Fetching DM trial values from headers. This may take a while ...")
+        self.logger.debug(f"Found a total of {len(filenames)} file names corresponding to specified pattern \"{glob_pattern}\"")
+        self.logger.info("Fetching DM trial values from headers. This may take a while...")
         dm_trials = {
             self.dm_getter(fname): fname
             for fname in filenames
@@ -323,24 +309,20 @@ class PipelineManager(object):
             tseries = self.loader(filenames[0])
             skycoord = tseries.metadata['skycoord']
             glat_radians = skycoord.galactic.b.rad
-            self.logger.info("Read galactic latitude from \"{:s}\" b = {:.3f} deg".format(filenames[0], skycoord.galactic.b.deg))
+            self.logger.debug(f"Read galactic latitude from {os.path.basename(filenames[0])}. b = {skycoord.galactic.b.deg:.3f} deg")
  
             if dmsinb_max is not None:
-                msg = "Requested maximum value of DM x sin |b| ({:.2f}) corresponds to DM = {:.2f}".format(
-                    dmsinb_max,
-                    get_galactic_dm_limit(glat_radians, dmsinb_max)
-                    )
-                self.logger.info(msg)
+                self.logger.info(f"Requested maximum value of DM x sin |b| ({dmsinb_max:.2f}) corresponds to DM = {get_galactic_dm_limit(glat_radians, dmsinb_max):.2f}")
  
             dm_min = get_lower_dm_limit(dm_trials.keys(), dm_min=dm_min)
             dm_max = get_upper_dm_limit(dm_trials.keys(), glat_radians, dm_max=dm_max, dmsinb_max=dmsinb_max)
- 
-        self.logger.info("Selecting DM trials in range [{:.3f}, {:.3f}] with a minimum step of {:.3f}".format(dm_min, dm_max, dm_step))
+
+        self.logger.info(f"Selecting DM trials in range [{dm_min:.3f}, {dm_max:.3f}] with a minimum step of {dm_step:.3f}")
  
         # NOTE: this is an iterator
         dm_trial_values = iter_steps(dm_trials.keys(), dm_min, dm_max, dm_step)
         self.dm_trial_paths = [dm_trials[value] for value in dm_trial_values]
-        self.logger.info("Selected {:d} DM trials to process".format(len(self.dm_trial_paths)))
+        self.logger.info(f"Selected {len(self.dm_trial_paths)} DM trials to process")
 
     def iter_batches(self):
         """ Iterate through input time series in batches. Yields a list of
@@ -349,12 +331,11 @@ class PipelineManager(object):
         paths = self.dm_trial_paths
 
         num_dm_trials = len(paths)
-        self.logger.info("Preparing to iterate through DM trials. Number of input files: {:d}". format(num_dm_trials))
+        self.logger.info(f"Preparing to iterate through DM trials. Number of input files: {num_dm_trials}")
 
         for batch in grouper(paths, num_processes):
             tsbatch = list(map(self.loader, batch))
             yield tsbatch
-
 
     def fetch_detections(self):
         """ Place all Detectionr objects from all the searches into a
@@ -365,7 +346,7 @@ class PipelineManager(object):
             for det in search.detections:
                 det.search = search
                 self.detections.append(det)
-        self.logger.info("Fetched a total of {:d} Detections".format(len(self.detections)))
+        self.logger.info(f"Fetched a total of {len(self.detections)} Detections")
 
     def fetch_clusters(self):
         """ Place all DetectionCluster objects from all the searches into a
@@ -376,7 +357,7 @@ class PipelineManager(object):
             for cl in search.clusters:
                 cl.search = search
                 self.clusters.append(cl)
-        self.logger.info("Fetched a total of {:d} DetectionClusters".format(len(self.clusters)))
+        self.logger.info(f"Fetched a total of {len(self.clusters)} DetectionClusters")
 
     def remove_harmonics(self):
         enabled = self.config['harmonic_filtering']['enabled']
@@ -387,7 +368,7 @@ class PipelineManager(object):
         if not self.detections:
             return
 
-        self.logger.info("Removing harmonics ...")
+        self.logger.info("Removing harmonics...")
 
         fmin = self.config['fmin']
         fmax = self.config['fmax']
@@ -408,22 +389,20 @@ class PipelineManager(object):
             if par["is_harmonic"]:
                 fund = self.clusters[par["fundamental_index"]]
                 frac = par["fraction"]
-                msg = "{!s} is a harmonic of {!s} with period ratio {!s}".format(cl, fund, frac)
-                self.logger.debug(msg)
+                self.logger.debug(f"{cl} is a harmonic of {fund} with period ratio {frac}")
             else:
                 fundamentals.append(cl)
 
         num_harmonics = len(self.clusters) - len(fundamentals)
-        self.logger.info("Flagged {:d} harmonics".format(num_harmonics))
+        self.logger.info(f"Flagged {num_harmonics} harmonics")
         self.clusters = fundamentals
-        self.logger.info("Retained {:d} final Candidates".format(len(self.clusters)))
-
+        self.logger.info(f"Retained {len(self.clusters)} final Candidates")
 
     def _apply_candidate_filter(self, filter_name, func):
         num_clusters = len(self.clusters)
         valid_clusters = list(filter(func, self.clusters))
         num_invalid = num_clusters - len(valid_clusters)
-        self.logger.info("Applied candidate filter \"{:s}\" on {:d} DetectionClusters: {:d} were removed".format(filter_name, num_clusters, num_invalid))
+        self.logger.info(f"Applied candidate filter \"{filter_name}\" on {num_clusters} DetectionClusters: {num_invalid} were removed")
         self.clusters = valid_clusters
 
     def apply_candidate_filters(self):
@@ -448,14 +427,13 @@ class PipelineManager(object):
                 lambda cl: cl.top_detection.snr >= snr_min)
 
         if max_number:
-            self.logger.info("Keeping only the top {:d} brightest candidates".format(max_number))
+            self.logger.info(f"Keeping only the top {max_number} brightest candidates")
             self.clusters = self.clusters[:max_number]
-
 
     def build_candidates(self):
         """ Turn remaining clusters (after applying filters) into candidates.
         """
-        self.logger.info("Building Candidates ...")
+        self.logger.info("Building Candidates...")
         self.candidates = []
 
         for cluster in self.clusters:
@@ -480,12 +458,10 @@ class PipelineManager(object):
                 candidate = Candidate.from_pipeline_output(cluster, tseries, nbins=nbins, nsubs=nsubs, logger=self.logger)
                 self.candidates.append(candidate)
             except Exception as error:
-                self.logger.error("ERROR: Failed to build candidate from {!s}. Reason: {!s}".format(cluster, error))
-
+                self.logger.error(f"Failed to build candidate from {cluster}. Reason: {error}")
 
         self.candidates = sorted(self.candidates, key=lambda cd: cd.metadata['best_snr'], reverse=True)
         self.logger.info("Done building candidates.")
-
 
     def save_detections(self):
         """ Save detection parameters to pandas.DataFrame """
@@ -494,7 +470,7 @@ class PipelineManager(object):
 
         outdir = self.config['outdir']
         fname = os.path.join(outdir, self.DETECTIONS_FILE_NAME)
-        self.logger.info("Saving pandas.DataFrame with parameters of all {:d} Detections to file {:s}".format(len(self.detections), fname))
+        self.logger.debug(f"Saving pandas.DataFrame with parameters of all {len(self.detections)} Detections to file {fname}")
 
         columns = ['search_name', 'period', 'dm', 'width', 'ducy', 'snr']
         data = []
@@ -513,7 +489,7 @@ class PipelineManager(object):
 
         outdir = self.config['outdir']
         fname = os.path.join(outdir, self.CLUSTERS_FILE_NAME)
-        self.logger.info("Saving pandas.DataFrame with parameters of all {:d} DetectionClusters to file {:s}".format(len(self.clusters), fname))
+        self.logger.debug(f"Saving pandas.DataFrame with parameters of all {len(self.clusters)} DetectionClusters to file {fname}")
 
         columns = ['search_name', 'period', 'dm', 'width', 'ducy', 'snr']
         data = []
@@ -532,15 +508,15 @@ class PipelineManager(object):
             return
 
         outdir = self.config['outdir']
-        self.logger.info("Saving {:d} candidates to output directory: {:s}".format(len(self.candidates), outdir))
+        self.logger.debug(f"Saving {len(self.candidates)} candidates to output directory: {outdir}")
 
         summary = []
         columns = ['fname', 'period', 'dm', 'width', 'ducy', 'snr']
 
         for index, cand in enumerate(self.candidates, start=1):
-            basename = "{:s}_{:04d}.h5".format(self.CANDIDATE_NAME_PREFIX, index)
+            basename = f"{self.CANDIDATE_NAME_PREFIX}_{index:04d}.h5"
             outpath = os.path.join(outdir, basename)
-            self.logger.info("Saving {!s} to file {:s}".format(cand, outpath))
+            self.logger.debug(f"Saving {cand} to file {outpath}")
             cand.save_hdf5(outpath)
 
             md = cand.metadata
@@ -555,24 +531,23 @@ class PipelineManager(object):
             summary.append(entry)
 
         fname = os.path.join(outdir, self.SUMMARY_FILE_NAME)
-        self.logger.info("Saving candidate summary to file {:s}".format(fname))
+        self.logger.info(f"Saving candidate summary to file {os.path.basename(fname)}")
         summary = pandas.DataFrame(summary, columns=columns)
         summary.to_csv(fname, sep='\t', index=False, float_format='%.8f')
 
-
     def run(self):
         """ Launch the processing. """
-        self.logger.info("Starting pipeline ...")
-        self.logger.info("Selecting DM trials ...")
+        self.logger.log(MultiColorFormatter.LOG_LEVEL_NUM, "Starting pipeline...")
+        self.logger.info("Selecting DM trials...")
         self.select_dm_trials()
 
         for tsbatch in self.iter_batches():
             dms = sorted([ts.metadata['dm'] for ts in tsbatch])
-            self.logger.info("Processing DM trials: {!s}".format(dms))
+            self.logger.info(f"Processing DM trials from {dms[0]:.3f} to {dms[-1]:.3f} in steps of {dms[1] - dms[0]:.3f}...")
             for search in self.searches:
                 search.process_time_series_batch(tsbatch)
 
-        self.logger.info("All DM trials have been processed. Clustering detections ...")
+        self.logger.info("All DM trials have been processed. Clustering detections...")
         for search in self.searches:
             search.cluster_detections()
 
@@ -588,8 +563,7 @@ class PipelineManager(object):
         self.build_candidates()
 
         self.save_candidates()
-        self.logger.info("Pipeline run complete.")
-
+        self.logger.log(MultiColorFormatter.LOG_LEVEL_NUM, "Pipeline run complete.")
 
 ################################################################################
 
@@ -616,8 +590,6 @@ def parse_arguments():
     args = parser.parse_args()
     return args
 
-
-
 def main():
     args = parse_arguments()
     # Get absolute paths right away, just to be safe
@@ -625,7 +597,6 @@ def main():
     args.outdir = os.path.realpath(args.outdir)
     manager = PipelineManager(args.config, override_keys=vars(args))
     manager.run()
-
 
 if __name__ == '__main__':
     main()

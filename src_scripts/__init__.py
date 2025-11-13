@@ -14,6 +14,7 @@ from .utilities import (
     list_files,
     step_iter,
     make_pdf,
+    MultiColorFormatter,
 )
 
 __all__ = [
@@ -28,4 +29,5 @@ __all__ = [
     "list_files",
     "step_iter",
     "make_pdf",
+    "MultiColorFormatter",
 ]

@@ -54,11 +54,9 @@ parser.add_argument(
 )
 
 try:
-
     args = parser.parse_args()
 
 except:
-
     parser.print_help()
     parser.exit(1)
 

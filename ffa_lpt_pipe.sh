@@ -11,67 +11,104 @@ Options:
     -o OUTPUT,      Specify the output directory (default: 'obs').
                     If 'obs' is provided, the output will be stored in a directory named FFAPipeData in the input observation directory.
     -m NODESLIST,   Specify the file listing the nodes to use.
-    [-b] BACKEND,   Specify the backend to use (possible values: GSB, GWB, SPOTLIGHT, SIM; default: SPOTLIGHT).
+    [-b] BACKEND,   Optional: Specify the backend to use (possible values: GSB, GWB, SPOTLIGHT, SIM; default: SPOTLIGHT).
     [-a],           Optional: Analyse all the scans in the observation director(y/ies).
                     If '-a' flag is not passed, process only the scans mentioned in the LPTs_config.yaml file.
-    [-t] TBIN,      Specify the time binning (default: 10).
-    [-f] FBIN,      Specify the frequency binning (default: 4).
-    [-p] NHOSTS,    Specify the number of beam hosts (default: 16).
-    [-n] NBEAMS,    Specify the number of beams per host (default: 10).
-    [-j] NJOBS,     Specify the number of jobs for the xtract2fil command.
+    [-t] TBIN,      Optional: Specify the time binning (default: 10).
+    [-f] FBIN,      Optional: Specify the frequency binning (default: 4).
+    [-j] NJOBS,     Optional: Specify the number of jobs for the xtract2fil command.
                     It is recommended that NJOBS <= NHOSTS. (default: 16).
-    [-s] OFFSET,    Specify the offset for the xtract2fil command (default: 64).
-    [-h],           Show this help message and exit.
+    [-s] OFFSET,    Optional: Specify the offset for the xtract2fil command (default: 64).
+    [-h],           Optional: Print this help message and exit.
 
 Examples:
     $(basename "$0") -i /path/to/input_obs_dirs.txt -o /path/to/output_dir -n /path/to/nodes.list -b SPOTLIGHT -a
     $(basename "$0") -i /path/to/input_obs_dirs.txt -o /path/to/output_dir -n /path/to/nodes.list -b GWB
     $(basename "$0") -h
 
-Author: Kenil Ajudiya (kenilr@alum.iisc.ac.in);       Date: 2025-09-01
+Author: Kenil Ajudiya (kenilr@alum.iisc.ac.in);       Date: 2025-11-13
 EOF
+}
+
+def_colors() {
+    # Bright foreground colors
+    BRED='\033[91m'           # Bright Red
+    BGRN='\033[92m'           # Bright Green
+    BYLW='\033[93m'           # Bright Yellow
+    BBLU='\033[94m'           # Bright Blue
+    BMAG='\033[95m'           # Bright Magenta
+    BCYN='\033[96m'           # Bright Cyan
+    BWHT='\033[97m'           # Bright White
+
+    # Bold
+    BLD='\033[1m'
+
+    # Reset formatting
+    RST='\033[0m'
+}
+
+print_art() {
+    echo -e ""
+    echo -e "${BLD}${BRED}          ███████╗ ███████╗  █████╗  ██████╗  ██╗ ██████╗  ███████╗          ${RST}"
+    echo -e "${BLD}${BRED}          ██╔════╝ ██╔════╝ ██╔══██╗ ██╔══██╗ ██║ ██╔══██╗ ██╔════╝          ${RST}"
+    echo -e "${BLD}${BRED}          █████╗   █████╗   ███████║ ██████╔╝ ██║ ██████╔╝ █████╗            ${RST}"
+    echo -e "${BLD}${BRED}          ██╔══╝   ██╔══╝   ██╔══██║ ██╔═══╝  ██║ ██╔═══╝  ██╔══╝            ${RST}"
+    echo -e "${BLD}${BRED}          ██║      ██║      ██║  ██║ ██║      ██║ ██║      ███████╗          ${RST}"
+    echo -e "${BLD}${BRED}          ╚═╝      ╚═╝      ╚═╝  ╚═╝ ╚═╝      ╚═╝ ╚═╝      ╚══════╝          ${RST}"
+    echo -e "${BLD}${BWHT}-----------------------------------------------------------------------------${RST}"
+    echo -e "${BLD}${BWHT}------------------------ SPOTLIGHT FFA PIPELINE v2.0 ------------------------${RST}"
+    echo -e "${BLD}${BWHT}-----------------------------------------------------------------------------${RST}"
+    echo -e ""
+    echo -e "${BLD}${BGRN}                     Copyright © 2025 The SPOTLIGHT Team                     ${RST}"
+    echo -e "${BLD}${BGRN}               Code at https://github.com/Kenil-Ajudiya/ffapipe              ${RST}"
+    echo -e "${BLD}${BGRN}     Report any issues at https://github.com/Kenil-Ajudiya/ffapipe/issues    ${RST}"
+    echo -e ""
+    echo -e ""
 }
 
 sanity_checks() {
     # Check if the input observation file is provided
     if [[ -z "$input_obs_file" ]]; then
-        echo "ERROR: Input observation file is not provided. Use -i to specify it."
+        echo -e "${BLD}${BRED}$(date '+%Y-%m-%d %H:%M:%S') # ERROR # Input observation file is not provided. Use -i to specify it.${RST}"
         exit 1
     fi
 
     NOBS=$(sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$/d' "$input_obs_file" | grep -c "")
     if [[ -z "$NOBS" || "$NOBS" -eq 0 ]]; then
-        echo "ERROR: Either the input observation file is empty or it does not have any uncommented lines."
+        echo -e "${BLD}${BRED}$(date '+%Y-%m-%d %H:%M:%S') # ERROR # Either the input observation file is empty or it does not have any uncommented lines.${RST}"
         exit 1
     else
-        echo "Number of observation directories to process: $NOBS."
+        echo -e "${BCYN}$(date '+%Y-%m-%d %H:%M:%S') # INFO #${RST} Number of observation directories to process: $NOBS."
     fi
 
-    if [[ $NOBS -gt 1 && "$flag_a" == "false" ]]; then
-        echo "WARNING: The '-a' flag is strictly enforced when multiple directories are to be processed."
+    if [[ $backend != "SPOTLIGHT" && $NOBS -gt 1 && "$flag_a" == "false" ]]; then
+        echo -e "${BLD}${BYLW}$(date '+%Y-%m-%d %H:%M:%S') # WARNING # The '-a' flag is strictly enforced when multiple directories are to be processed.${RST}"
         flag_a=true
     fi
 
     # Check if the output directory is provided
     if [[ -z "$output_dir" ]]; then
-        echo "ERROR: Output directory is not provided. Use -o to specify it."
+        echo -e "${BLD}${BRED}$(date '+%Y-%m-%d %H:%M:%S') # ERROR # Output directory is not provided. Use -o to specify it.${RST}"
         exit 1
     fi
 
     # Check if the nodes list is provided
     NRANKS=${#nodes_list[@]}
     if [[ $NRANKS -eq 0 ]]; then
-        echo "ERROR: Nodes list is not provided. Use -n to specify it."
+        echo -e "${BLD}${BRED}$(date '+%Y-%m-%d %H:%M:%S') # ERROR # Nodes list is not provided. Use -n to specify it.${RST}"
         exit 1
     else
-        echo "Number of nodes to be used for processing: $NRANKS."
+        echo -e "${BCYN}$(date '+%Y-%m-%d %H:%M:%S') # INFO #${RST} Number of nodes to be used for processing: $NRANKS."
     fi
 }
 
 generate_mpi_files() {
     # Generate the hostfile and rankfile based on the nodes list
-    echo "Generating hostfile and rankfile based on the provided nodes list..."
-    echo "Nodes list: ${nodes_list[*]}"
+    echo -e "${BCYN}$(date '+%Y-%m-%d %H:%M:%S') # INFO #${RST} Nodes list:"
+    for node in "${nodes_list[@]}"; do
+        echo "                                      - $node"
+    done
+
     # Create or clear the hostfile
     echo -n "" > "$HOSTFILE"
     echo -n "" > "$RANKFILE"
@@ -81,14 +118,15 @@ generate_mpi_files() {
         echo "rank $i=$node slot=0" >> "$RANKFILE" # Add the node and its rank to the rankfile
     done
     if [[ ! -s "$HOSTFILE" || ! -s "$RANKFILE" ]]; then
-        echo "ERROR: Failed to generate hostfile or rankfile."
+        echo -e "${BLD}${BRED}$(date '+%Y-%m-%d %H:%M:%S') # ERROR # Failed to generate hostfile or rankfile.${RST}"
         exit 1
     fi
 }
 
 xtract_N_chk() {
     RAW_FILES=$(eval echo "$BEAM_DIR/$SCAN.raw.{0..$UPPER}")
-    remote_output=$(ssh -t -t "${nodes_list[0]}" "
+    AHDR_FILES=$(eval echo "$BEAM_DIR/$SCAN.raw.{0..$UPPER}.ahdr")
+    REMOTE_OUTPUT=$(ssh -t -t "${nodes_list[0]}" "
         source ${TDSOFT}/env.sh;
         xtract2fil \
             ${RAW_FILES} \
@@ -97,45 +135,80 @@ xtract_N_chk() {
             --dual \
             --tbin ${tbin} \
             --fbin ${fbin} \
-            --nbeams ${nbeams} \
+            --nbeams ${NBEAMS} \
             --njobs ${njobs} \
             --offset ${offset};
         echo \$?")
 
-    local_ssh_status=$?
-    if [ "$local_ssh_status" -eq 255 ]; then
-        echo "SSH connection failed."
-        echo "HELP: SSH command exit status: $local_ssh_status"
+    LOCAL_SSH_STATUS=$?
+    if [[ "$LOCAL_SSH_STATUS" -eq 255 ]]; then
+        echo -e "${BLD}${BRED}$(date '+%Y-%m-%d %H:%M:%S') # ERROR # SSH connection failed.${RST}"
+        echo -e "${BLD}${BMAG}$(date '+%Y-%m-%d %H:%M:%S') # HELP # SSH command exit status: $LOCAL_SSH_STATUS${RST}"
         exit 1
     fi
-    exit_code=$(echo "$remote_output" | tail -n 1 | tr -d '\r')
-    if [ "$exit_code" -eq 0 ]; then
-        echo "INFO: Successfully extracted the beams into filterbank files for scan: $SCAN"
-        cp "$BEAM_DIR/$SCAN.raw.0.ahdr" "$output_dir"
+    EXIT_CODE=$(echo "$REMOTE_OUTPUT" | tail -n 1 | tr -d '\r')
+    if [[ "$EXIT_CODE" -eq 0 ]]; then
+        echo -e "${BCYN}$(date '+%Y-%m-%d %H:%M:%S') # INFO #${RST} Successfully extracted the beams into filterbank files for scan: $SCAN"
+        cp $AHDR_FILES $output_dir/state/$SCAN
+        rm -f $RAW_FILES
+        return 0
     else
-        echo "$remote_output"
-        echo "ERROR: xtract2fil command failed for scan: $SCAN with exit code $exit_code."
+        echo "$REMOTE_OUTPUT"
+        echo -e "${BLD}${BRED}$(date '+%Y-%m-%d %H:%M:%S') # ERROR # xtract2fil command failed for scan: $SCAN with exit code $EXIT_CODE.${RST}"
+        return 1
+    fi
+}
+
+unite_PDFs() {
+    echo -e "${BCYN}$(date '+%Y-%m-%d %H:%M:%S') # INFO #${RST} Combining all the PDFs in the BM** directories into a single PDF."
+    UPPER_BMS=$((TOTAL_BMS-1))
+    CAND_PDFS=($(eval echo "${OP_SCAN_DIR}/BM{0..$UPPER_BMS}.down/candidates/candidate_plts.pdf"))
+    if (( $(ls ${CAND_PDFS[@]} 2>/dev/null | wc -l) !=  $TOTAL_BMS )); then
+        echo -e "${BLD}${BYLW}$(date '+%Y-%m-%d %H:%M:%S') # WARNING # Couldn't find $TOTAL_BMS candidate_plts.pdf files in ${OP_SCAN_DIR}/*/candidates/. Skipping PDF combination for scan: $SCAN. Please check and retry.${RST}"
+        return 1
+    fi
+
+    # REMOTE_OUTPUT=$(ssh -t -t "${nodes_list[0]}" "/lustre_archive/apps/tdsoft/bin/pdfunite ${OP_SCAN_DIR}/*/candidates/candidate_plts.pdf ${OP_SCAN_DIR}/${SCAN}_candidates.pdf")
+    REMOTE_OUTPUT=$(pdfunite "${CAND_PDFS[@]}" "${OP_SCAN_DIR}/${SCAN}_candidates.pdf"; echo $?)
+
+    LOCAL_SSH_STATUS=$?
+    if [[ "$LOCAL_SSH_STATUS" -eq 255 ]]; then
+        echo -e "${BLD}${BRED}$(date '+%Y-%m-%d %H:%M:%S') # ERROR # SSH connection failed.${RST}"
+        echo -e "${BLD}${BMAG}$(date '+%Y-%m-%d %H:%M:%S') # HELP # SSH command exit status: $LOCAL_SSH_STATUS${RST}"
+        exit 1
+    fi
+    EXIT_CODE=$(echo "$REMOTE_OUTPUT" | tail -n 1 | tr -d '\r')
+    if [[ "$EXIT_CODE" -eq 0 ]]; then
+        echo -e "${BCYN}$(date '+%Y-%m-%d %H:%M:%S') # INFO #${RST} Successfully combined all the PDFs for scan: $SCAN"
+        mv "${OP_SCAN_DIR}/${SCAN}_candidates.pdf" "${OP_SCAN_DIR}/${SCAN}_candidates_combined.pdf"
+        return 0
+    else
+        echo "$REMOTE_OUTPUT"
+        echo -e "${BLD}${BRED}$(date '+%Y-%m-%d %H:%M:%S') # ERROR # pdfunite command failed for scan: $SCAN with exit code $EXIT_CODE.${RST}"
+        echo -e "${BLD}${BYLW}$(date '+%Y-%m-%d %H:%M:%S') # WARNING # Removing incomplete/partially created PDF file: ${OP_SCAN_DIR}/${SCAN}_candidates.pdf${RST}"
+        rm -f "${OP_SCAN_DIR}/${SCAN}_candidates.pdf" 2>/dev/null
+        return 1
     fi
 }
 
 analysis() {
-    EXP_COUNT=$((nbeams*nhosts))
-    UPPER=$((nhosts-1))
-
     # Read non-comment, non-empty lines into an array
-    mapfile -t obs_dirs < <(grep -v '^[[:space:]]*#' "$input_obs_file" | grep -v '^[[:space:]]*$')
-    echo "Observation directories to be processed: ${obs_dirs[*]}"
+    mapfile -t OBS_DIRS < <(grep -v '^[[:space:]]*#' "$input_obs_file" | grep -v '^[[:space:]]*$')
+    echo -e "${BCYN}$(date '+%Y-%m-%d %H:%M:%S') # INFO #${RST} Observation directories to be processed:"
+    for OBS_DIR in "${OBS_DIRS[@]}"; do
+        echo "                                                                  - $(basename "$OBS_DIR")"
+    done
 
     # Final checks and launch the FFA processing script
-    for OBS_DIR in "${obs_dirs[@]}"; do
+    for OBS_DIR in "${OBS_DIRS[@]}"; do
         if [[ ! -d "$OBS_DIR" ]]; then
-            echo "ERROR: Observation directory '$OBS_DIR' does not exist or is not a directory."
+            echo -e "${BLD}${BRED}$(date '+%Y-%m-%d %H:%M:%S') # ERROR # Observation directory '$OBS_DIR' does not exist or is not a directory.${RST}"
             continue # Skip to the next line if the directory is invalid
         fi
 
-        echo "Starting to process the following observation: $OBS_DIR"
+        echo -e "${BLD}${BGRN}$(date '+%Y-%m-%d %H:%M:%S') # LOG # Starting to process the following observation: $(basename $OBS_DIR)${RST}"
 
-        if [[ "$output_dir" == "obs" ]]; then
+        if [[ "$op_dir_flag" == "true" ]]; then
             output_dir="$OBS_DIR/FFAPipeData"
             if [[ ! -d "$output_dir" ]]; then
                 mkdir "$output_dir"
@@ -143,6 +216,10 @@ analysis() {
         fi
 
         if [[ "$backend" == "SPOTLIGHT" ]]; then
+            # Assume successful processing unless an error occurs.
+            OBS_PROC_STATUS=0   # 1 - Unsuccessful; 0 - Successful
+            OBS_PROC_STATUS_LOG_FILE="$output_dir/state/$(basename $OBS_DIR)_proc_status.log"
+            mkdir -p "$(dirname $OBS_PROC_STATUS_LOG_FILE)"
             BEAM_DIR="${OBS_DIR}/BeamData"
             FIL_DIR="${OBS_DIR}/FilData_dwnsmp"
 
@@ -151,38 +228,99 @@ analysis() {
             sed -i "82c\    output_path: $output_dir" $FFA_CONFIG
 
             if [[ ! -d "$BEAM_DIR" ]]; then
-                echo "ERROR: Beam data directory '$BEAM_DIR' does not exist."
+                echo -e "${BLD}${BRED}$(date '+%Y-%m-%d %H:%M:%S') # ERROR # Beam data directory '$BEAM_DIR' does not exist.${RST}"
                 continue # Skip to the next observation directory
             else
+                echo "Starting to process the following observation: $(basename $OBS_DIR). Check $OBS_PROC_STATUS_LOG_FILE." >> $PROC_LOG_FILE
                 for SCAN in "$BEAM_DIR"/*.raw.0.ahdr; do
+                    # NBEAMS=$(grep -m1 "Total No. of Beams/host[[:space:]]*=" "$SCAN" | awk -F= '{print $2}' | xargs)
+                    # TOTAL_BMS=$(grep -m1 "Total No. of Beams[[:space:]]*=" "$SCAN" | awk -F= '{print $2}' | xargs)
+                    NBEAMS=10           # Temporary hardcoding.
+                    TOTAL_BMS=160       # Temporary hardcoding.
+                    NHOSTS=$(( TOTAL_BMS / NBEAMS ))
+                    UPPER=$((NHOSTS-1))
+
                     SCAN=$(basename -s .raw.0.ahdr "$SCAN")
-                    if [[ -d "$FIL_DIR/$SCAN" ]] && (( $(ls "$FIL_DIR/$SCAN" | wc -l) == EXP_COUNT )); then
-                        echo "INFO: Found the expected number of filterbank files for the scan: $SCAN."
+                    OP_SCAN_DIR=${output_dir}/state/${SCAN}
+                    SCAN_PROC_STATUS_LOG_FILE="${OP_SCAN_DIR}/${SCAN}_proc_status.log"
+                    echo -e "${BLD}${BGRN}$(date '+%Y-%m-%d %H:%M:%S') # LOG # Starting to process the following scan: $SCAN${RST}"
+                    echo "Starting to process the following scan: $SCAN. Check ./${SCAN}/${SCAN}_proc_status.log for details." >> $OBS_PROC_STATUS_LOG_FILE
+                    if [[ -d "$FIL_DIR/$SCAN" ]] && (( $(ls -1 "$FIL_DIR/$SCAN" | wc -l) == TOTAL_BMS )); then
+                        echo -e "${BCYN}$(date '+%Y-%m-%d %H:%M:%S') # INFO #${RST} Found the expected number of filterbank files."
+                        # Even if the filterbank files are present, check if xtract_N_chk had succeeded earlier by looking for the .ahdr files.
+                        MISSING_AHDRS=0
+                        for i in $(seq 0 $UPPER); do
+                            if [[ ! -f "$output_dir/state/${SCAN}/${SCAN}.raw.$i.ahdr" ]]; then
+                                MISSING_AHDRS=1
+                                break
+                            fi
+                        done
+                        if [[ $MISSING_AHDRS -eq 1 ]]; then
+                            echo -e "${BCYN}$(date '+%Y-%m-%d %H:%M:%S') # INFO #${RST} Some .ahdr files are missing. Re-running xtract2fil to ensure consistency."
+                            xtract_N_chk
+                            if [[ $? -eq 1 ]]; then
+                                echo "xtract_N_chk failed." >> $SCAN_PROC_STATUS_LOG_FILE
+                                OBS_PROC_STATUS=1
+                                continue
+                            else
+                                echo "xtract_N_chk succeeded." >> $SCAN_PROC_STATUS_LOG_FILE
+                            fi
+                        else
+                            echo "Valid filterbank and .ahdr files found." >> $SCAN_PROC_STATUS_LOG_FILE
+                        fi
                     else
-                        echo "INFO: Couldn't find the expected number of filterbank files for the scan: $SCAN."
-                        echo "Attempting to extract beams using xtract2fil."
+                        echo -e "${BCYN}$(date '+%Y-%m-%d %H:%M:%S') # INFO #${RST} Couldn't find the expected number of filterbank files."
+                        echo -e "${BCYN}$(date '+%Y-%m-%d %H:%M:%S') # INFO #${RST} Attempting to extract beams using xtract2fil."
                         if [[ ! -f "$BEAM_DIR/$SCAN.raw.0" ]]; then
-                            echo "ERROR: Raw file '$BEAM_DIR/$SCAN.raw.0' does not exist. Cannot run xtract2fil."
+                            echo -e "${BLD}${BRED}$(date '+%Y-%m-%d %H:%M:%S') # ERROR # Raw file '$BEAM_DIR/$SCAN.raw.0' does not exist. Cannot run xtract2fil.${RST}"
                             continue
                         else
-                            STATUS=0
                             xtract_N_chk
-                            if [[ $STATUS == "1" ]]; then continue; fi
+                            if [[ $? -eq 1 ]]; then
+                                echo "xtract_N_chk failed." >> $SCAN_PROC_STATUS_LOG_FILE
+                                OBS_PROC_STATUS=1
+                                continue
+                            else
+                                echo "xtract_N_chk succeeded." >> $SCAN_PROC_STATUS_LOG_FILE
+                            fi
                         fi
                     fi
                     # Modify the LPTs_config.yaml file with the scan directory.
                     sed -i "75c\        SPOTLIGHT: $SCAN" $FFA_CONFIG
-                    # Launch the FFA processing script with the specified parameters
+
+                    echo -e "${BCYN}$(date '+%Y-%m-%d %H:%M:%S') # INFO #${RST} Launching the FFA pipeline."
                     mpirun \
                         -np ${NRANKS} \
                         --hostfile "${HOSTFILE}" \
                         --map-by rankfile:file="${RANKFILE}" \
                         "${LAUNCH_FFAPIPE}" "false" "$backend"
 
-                    # Combine all the PDFs in the BM** directories into a single PDF.
-                    OP_SCAN_DIR=${output_dir}/state/$SCAN
-                    pdfunite "$OP_SCAN_DIR"/*/candidates/candidate_plts.pdf "$OP_SCAN_DIR/$(basename "$OP_SCAN_DIR")_candidates.pdf"
+                    if [[ $? -eq 1 ]]; then
+                        echo "Pipeline run failed." >> $SCAN_PROC_STATUS_LOG_FILE
+                        OBS_PROC_STATUS=1
+                        continue
+                    else
+                        echo "Pipeline run succeeded." >> $SCAN_PROC_STATUS_LOG_FILE
+                    fi
+
+                    if [[ ! -f "${OP_SCAN_DIR}/${SCAN}_candidates_combined.pdf" ]]; then
+                        unite_PDFs
+                        if [[ $? -eq 1 ]]; then
+                            echo "PDF unification failed." >> $SCAN_PROC_STATUS_LOG_FILE
+                            OBS_PROC_STATUS=1
+                            continue
+                        else
+                            echo "PDF unification succeeded." >> $SCAN_PROC_STATUS_LOG_FILE
+                        fi
+                    fi
+                    echo -e "${BLD}${BGRN}$(date '+%Y-%m-%d %H:%M:%S') # LOG # Done processing the following scan: $SCAN${RST}"
                 done
+
+                if [[ $OBS_PROC_STATUS -eq 1 ]]; then
+                    echo "Observation processing failed." >> $OBS_PROC_STATUS_LOG_FILE
+                else
+                    echo "Observation processing succeeded." >> $OBS_PROC_STATUS_LOG_FILE
+                fi
             fi
         else
             # Modify the LPTs_config.yaml file with the input observation directory.
@@ -196,31 +334,32 @@ analysis() {
                 --map-by rankfile:file="${RANKFILE}" \
                 "${LAUNCH_FFAPIPE}" "$flag_a" "$backend"
         fi
+        echo -e "${BLD}${BGRN}$(date '+%Y-%m-%d %H:%M:%S') # LOG # Done processing the following observation: $(basename $OBS_DIR)${RST}"
+        echo "Finished processing the following observation: $(basename $OBS_DIR)." >> $PROC_LOG_FILE
     done
 }
 
 main() {
-    echo "Starting FFA pipeline setup and execution..."
-    
+    echo -e "${BLD}${BGRN}$(date '+%Y-%m-%d %H:%M:%S') # LOG # Starting FFA pipeline setup and execution...${RST}"
+
     # Initialize variables for the flags and option
-    flag_a=false # Flag for -a
-    backend="SPOTLIGHT" # Stores the value for the -b option
-    input_obs_file="" # Stores the value for the -i option
-    output_dir="obs" # Stores the value for the -o option
-    nodes_list=() # Array to store the list of nodes to be used for processing
-    tbin=10 # Time binning
-    fbin=4 # Frequency binning
-    nhosts=16 # Number of beam hosts
-    nbeams=10 # Number of beams per host
-    njobs=16 # Number of jobs for the xtract2fil command
-    offset=64 # Offset for the xtract2fil command
+    flag_a=false            # Flag for -a
+    backend="SPOTLIGHT"     # Stores the value for the -b option
+    input_obs_file=""       # Stores the value for the -i option
+    output_dir="obs"        # Stores the value for the -o option
+    op_dir_flag=false       # Flag to indicate if output directory is 'obs'
+    nodes_list=()           # Array to store the list of nodes to be used for processing
+    tbin=10                 # Time binning
+    fbin=4                  # Frequency binning
+    njobs=16                # Number of jobs for the xtract2fil command
+    offset=64               # Offset for the xtract2fil command
 
     # Parse command line options
     if [[ $# -eq 0 ]]; then
         usage
         exit 0
     fi
-    while getopts "ab:f:i:j:m:n:o:p:s:t:h" OPT; do
+    while getopts "ab:f:i:j:m:o:s:t:h" OPT; do
         case $OPT in
         a)
             flag_a=true # Set the flag for -a
@@ -228,7 +367,7 @@ main() {
         b)
             # Check if a value is provided for -b
             if [[ -z "$OPTARG" || "$OPTARG" == -* ]]; then
-                echo "ERROR: -b option requires a value."
+                echo -e "${BLD}${BRED}$(date '+%Y-%m-%d %H:%M:%S') # ERROR # -b option requires a value.${RST}"
                 exit 1
             fi
             
@@ -239,7 +378,7 @@ main() {
                     ;;
                 *)
                     # The value is NOT one of the allowed backends
-                    echo "ERROR: '$OPTARG' is not a valid backend. Allowed backends are: GSB, GWB, SPOTLIGHT, SIM."
+                    echo -e "${BLD}${BRED}$(date '+%Y-%m-%d %H:%M:%S') # ERROR # '$OPTARG' is not a valid backend. Allowed backends are: GSB, GWB, SPOTLIGHT, SIM.${RST}"
                     exit 1
                     ;;
             esac
@@ -247,36 +386,36 @@ main() {
         i)
             # Check if a value is provided for -i
             if [[ -z "$OPTARG" || "$OPTARG" == -* ]]; then
-                echo "ERROR: -i option requires a value."
+                echo -e "${BLD}${BRED}$(date '+%Y-%m-%d %H:%M:%S') # ERROR # -i option requires a value.${RST}"
                 exit 1
             else
                 if [[ ! -f "$OPTARG" ]]; then
-                    echo "ERROR: Input observation file '$OPTARG' does not exist."
+                    echo -e "${BLD}${BRED}$(date '+%Y-%m-%d %H:%M:%S') # ERROR # Input observation file '$OPTARG' does not exist.${RST}"
                     exit 1
                 else
                     input_obs_file="$OPTARG"
-                    echo "Input observation file is set to: $input_obs_file"
+                    echo -e "${BCYN}$(date '+%Y-%m-%d %H:%M:%S') # INFO #${RST} Input observation file is set to: $input_obs_file"
                 fi
             fi
             ;;
         o)
             # Check if a value is provided for -o
             if [[ -z "$OPTARG" || "$OPTARG" == -* ]]; then
-                echo "ERROR: -o option requires a value."
+                echo -e "${BLD}${BRED}$(date '+%Y-%m-%d %H:%M:%S') # ERROR # -o option requires a value.${RST}"
                 exit 1
             else
                 if [[ "$OPTARG" == "obs" ]]; then
-                    echo "The output will be stored in a directory named FFAPipeData in the input observation directory."
-                    output_dir=$OPTARG
+                    echo -e "${BCYN}$(date '+%Y-%m-%d %H:%M:%S') # INFO #${RST} The output will be stored in a directory named ${BBLU}FFAPipeData${RST} in the input observation directory."
+                    op_dir_flag=true
                 else
                     if [[ ! -d "$OPTARG" ]]; then
-                        echo "WARNING: Output directory '$OPTARG' does not exist. Creating it along with all the missing parent directories."
+                        echo -e "${BLD}${BYLW}$(date '+%Y-%m-%d %H:%M:%S') # WARNING # Output directory '$OPTARG' does not exist. Creating it along with all the missing parent directories.${RST}"
                         mkdir -p "$OPTARG"
                         output_dir="$OPTARG"
-                        echo "Output directory is set to: $output_dir"
+                        echo -e "${BCYN}$(date '+%Y-%m-%d %H:%M:%S') # INFO #${RST} Output directory is set to: $output_dir"
                     else
                         output_dir=$(realpath "$OPTARG") # Get the absolute path of the output directory
-                        echo "The absolute path of the output directory is: $output_dir"
+                        echo -e "${BCYN}$(date '+%Y-%m-%d %H:%M:%S') # INFO #${RST} The absolute path of the output directory is: $output_dir"
                     fi
                 fi
             fi
@@ -284,58 +423,42 @@ main() {
         m)
             # Check if a value is provided for -n
             if [[ -z "$OPTARG" || "$OPTARG" == -* ]]; then
-                echo "ERROR: -n option requires a value."
+                echo -e "${BLD}${BRED}$(date '+%Y-%m-%d %H:%M:%S') # ERROR # -n option requires a value.${RST}"
                 exit 1
             else
                 if [[ ! -f "$OPTARG" ]]; then
-                    echo "ERROR: Nodes list file '$OPTARG' does not exist."
+                    echo -e "${BLD}${BRED}$(date '+%Y-%m-%d %H:%M:%S') # ERROR # Nodes list file '$OPTARG' does not exist.${RST}"
                     exit 1
                 fi
             fi
             
             # Split the nodes by comma and store them in the array
-            while read -r line; do
-                nodes_list+=("$line")
-            done < $OPTARG
+            mapfile -t nodes_list < <(grep -v '^[[:space:]]*#' "$OPTARG" | grep -v '^[[:space:]]*$')
             ;;
         t)
             if [[ "$OPTARG" =~ ^-?[0-9]+$ ]] && (( OPTARG < 0 )); then
-                echo "ERROR: -t option requires a positive value."
+                echo -e "${BLD}${BRED}$(date '+%Y-%m-%d %H:%M:%S') # ERROR # -t option requires a positive value.${RST}"
                 exit 1
             fi
             tbin="$OPTARG"
             ;;
         f)
             if [[ "$OPTARG" =~ ^-?[0-9]+$ ]] && (( OPTARG < 0 )); then
-                echo "ERROR: -f option requires a positive value."
+                echo -e "${BLD}${BRED}$(date '+%Y-%m-%d %H:%M:%S') # ERROR # -f option requires a positive value.${RST}"
                 exit 1
             fi
             fbin="$OPTARG"
             ;;
-        n)
-            if [[ "$OPTARG" =~ ^-?[0-9]+$ ]] && (( OPTARG < 0 )); then
-                echo "ERROR: -n option requires a positive value."
-                exit 1
-            fi
-            nbeams="$OPTARG"
-            ;;
-        p)
-            if [[ "$OPTARG" =~ ^-?[0-9]+$ ]] && (( OPTARG < 0 )); then
-                echo "ERROR: -p option requires a positive value."
-                exit 1
-            fi
-            nhosts="$OPTARG"
-            ;;
         s)
             if [[ "$OPTARG" =~ ^-?[0-9]+$ ]]; then
-                echo "ERROR: -s option requires an integer value."
+                echo -e "${BLD}${BRED}$(date '+%Y-%m-%d %H:%M:%S') # ERROR # -s option requires an integer value.${RST}"
                 exit 1
             fi
             offset="$OPTARG"
             ;;
         j)
             if [[ "$OPTARG" =~ ^-?[0-9]+$ ]] && (( OPTARG < 0 )); then
-                echo "ERROR: -j option requires a positive value."
+                echo -e "${BLD}${BRED}$(date '+%Y-%m-%d %H:%M:%S') # ERROR # -j option requires a positive value.${RST}"
                 exit 1
             fi
             njobs="$OPTARG"
@@ -345,7 +468,7 @@ main() {
             exit 0
             ;;
         \?)
-            echo "ERROR: Unknown option: $OPTARG"
+            echo -e "${BLD}${BRED}$(date '+%Y-%m-%d %H:%M:%S') # ERROR # Unknown option: $OPTARG${RST}"
             usage
             exit 1
             ;;
@@ -356,19 +479,24 @@ main() {
         esac
     done
 
-    echo "Performing sanity checks..."
+    echo -e "${BLD}${BGRN}$(date '+%Y-%m-%d %H:%M:%S') # LOG # Performing sanity checks...${RST}"
     sanity_checks
-    echo "Sanity checks passed."
-    echo "Generating MPI hostfile and rankfile..."
+    echo -e "${BLD}${BGRN}$(date '+%Y-%m-%d %H:%M:%S') # LOG # Sanity checks passed.${RST}"
+    echo -e "${BLD}${BGRN}$(date '+%Y-%m-%d %H:%M:%S') # LOG # Generating MPI hostfile and rankfile based on the provided nodes list...${RST}"
     generate_mpi_files
-    echo "MPI hostfile and rankfile generated."
-    echo "Starting analysis..."
-    echo "FFAPipe status = ON" > /lustre_archive/spotlight/data/MON_DATA/das_log/FFAPipe_status.log
-    echo "Nodes = ${nodes_list[@]}" >> /lustre_archive/spotlight/data/MON_DATA/das_log/FFAPipe_status.log
+    echo -e "${BLD}${BGRN}$(date '+%Y-%m-%d %H:%M:%S') # LOG # MPI hostfile and rankfile generated.${RST}"
+    echo -e "${BLD}${BGRN}$(date '+%Y-%m-%d %H:%M:%S') # LOG # Starting analysis...${RST}"
+    STATUS_LOG_FILE="/lustre_archive/spotlight/data/MON_DATA/das_log/FFAPipe_status.log"
+    echo "FFAPipe status = ON" > $STATUS_LOG_FILE
+    echo "Nodes = ${nodes_list[@]}" >> $STATUS_LOG_FILE
     analysis
-    echo "Analysis completed."
-    echo "FFAPipe status = OFF" > /lustre_archive/spotlight/data/MON_DATA/das_log/FFAPipe_status.log
+    echo -e "${BLD}${BGRN}$(date '+%Y-%m-%d %H:%M:%S') # SUCCESS # Analysis completed.${RST}"
+    echo "FFAPipe status = OFF" > $STATUS_LOG_FILE
 }
+
+def_colors
+
+print_art
 
 TDSOFT="/lustre_archive/apps/tdsoft"
 source $TDSOFT/env.sh && conda activate FFA
@@ -379,5 +507,7 @@ FFA_CONFIG="${FFA_PIPE_REPO}/configurations/LPTs_config.yaml"
 MPI_CONFIG_DIR="${FFA_PIPE_REPO}/configurations/MPI_config"
 HOSTFILE="${MPI_CONFIG_DIR}/hosts.txt"
 RANKFILE="${MPI_CONFIG_DIR}/ranks.txt"
+STATUS_LOG_FILE="/lustre_archive/spotlight/data/MON_DATA/das_log/FFAPipe_status.log"
+PROC_LOG_FILE="/lustre_data/spotlight/data/watched/FFAPipe_logs/observation_processing.log"
 
 main "$@"

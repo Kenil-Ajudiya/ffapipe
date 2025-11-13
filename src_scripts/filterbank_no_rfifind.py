@@ -1,7 +1,5 @@
 # type: ignore
 
-### Standard imports ###
-
 import os
 import re
 import shlex
@@ -30,10 +28,8 @@ from riptide.pipelines import Candidate
 from riptide.pipelines import CandidatePlot
 
 ### Local imports ###
-
-from .utilities import grouper, filter_by_ext, count_files, step_iter, make_pdf
+from .utilities import grouper, filter_by_ext, count_files, step_iter, make_pdf, MultiColorFormatter
 from .metas import Meta
-
 
 class Filterbank(object):
 
@@ -123,7 +119,7 @@ class Filterbank(object):
         total_time = timedelta(seconds=self._cumulative_walltime)
         return total_time
 
-    def configure_logger(self):
+    def configure_logger(self, level=logging.INFO):
 
         """ Configure the loggers for this filterbank file. """
 
@@ -132,6 +128,7 @@ class Filterbank(object):
         _log_name_ = ".".join([self.date, self.output_name])
 
         self.logger = logging.getLogger(_log_name_)
+        self.logger.setLevel(level)
 
         # Add another handler to this logger to log process information to
         # a hidden log file. This will later be used for updating the user
@@ -140,10 +137,12 @@ class Filterbank(object):
         _formatter_ = logging.Formatter(fmt="%(message)s")
 
         _handler_ = logging.FileHandler(f"./{self.date}.PIDS_{self.config.RANK}.log", mode="w+")
-
         _handler_.setFormatter(_formatter_)
-
         self.logger.addHandler(_handler_)
+
+        stream_handler = logging.StreamHandler()
+        stream_handler.setFormatter(MultiColorFormatter())
+        self.logger.addHandler(stream_handler)
 
     def calc_time_params(self):
 
@@ -322,17 +321,12 @@ class Filterbank(object):
 
                 outstream.write(string + "\n")
 
-        self.logger.info("Header constructed.")
-        self.logger.info(
-            "Making symbolic link between the '*.raw' file and a "
-            "'*.raw.gmrt_dat' file."
-        )
+        self.logger.info("Header constructed.\n" \
+        "Making symbolic link between the '*.raw' file and a '*.raw.gmrt_dat' file.")
 
         # Create a symbolic link between the "*.raw" file and a "*.raw.gmrt_dat" file.
 
-        cmd_symb = "ln -s {}".format(
-            " ".join([self.path, self.path.replace(".raw", ".raw.gmrt_dat")])
-        )
+        cmd_symb = f"ln -s {self.path} {self.path.replace('.raw', '.raw.gmrt_dat')}"
         arg_symb = shlex.split(cmd_symb)
         proc_symb = subprocess.Popen(arg_symb)
         proc_symb.wait()
@@ -353,44 +347,24 @@ class Filterbank(object):
 
         # Copy appropriate GPTool template, according to backend.
 
-        cmd_cp = "cp {} {}".format(
-            os.path.join(
-                template_path, ".".join(["gptool", self.config.backend, "in"])
-            ),
-            "./gptool.in",
-        )
+        cmd_cp = f"cp {os.path.join(template_path, '.'.join(['gptool', self.config.backend, 'in']))} ./gptool.in"
         arg_cp = shlex.split(cmd_cp)
         proc_cp = subprocess.Popen(arg_cp)
         proc_cp.wait()
 
         # Run GPTool.
         if self.config.backend == "GWB":
-            cmd_gptool = (
-                "/Data/jroy/softwares/gptool_ver4.4.5.FRB/gptool -f {} -o {} -m {} -nodedisp -zsub "
-                "-t 2"
-            ).format(self.path, os.path.dirname(self.path), "32")
+            cmd_gptool = f"/Data/jroy/softwares/gptool_ver4.4.5.FRB/gptool -f {self.path} -o {os.path.dirname(self.path)} -m 32 -nodedisp -zsub -t 2"
         else:
-            cmd_gptool = (
-                "/Data/jroy/softwares/gptool_ver4.4.5.PSR/gptool -f {} -o {} -m {} -nodedisp "
-                "-t 2"
-            ).format(self.path, os.path.dirname(self.path), "32")
+            cmd_gptool = f"/Data/jroy/softwares/gptool_ver4.4.5.PSR/gptool -f {self.path} -o {os.path.dirname(self.path)} -m 32 -nodedisp -t 2"
 
-        #        cmd_gptool = ('/data/jroy/softwares/gptool_ver4.2.1/gptool -f {} -o {} -m {} -nodedisp '
-        #                      '-t {}').format(self.path,
-        #                                      os.path.dirname(self.path),
-        #                                      '32',
-        #                                      self.config.cores)
+        # cmd_gptool = f"/data/jroy/softwares/gptool_ver4.2.1/gptool -f {self.path} -o {os.path.dirname(self.path)} -m 32 -nodedisp -t {self.config.cores}"
         arg_gptool = shlex.split(cmd_gptool)
-        proc_gptool = subprocess.Popen(
-            arg_gptool, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-        )
+        proc_gptool = subprocess.Popen(arg_gptool, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         proc_gptool.wait()
 
-        self.logger.info("Done with RFI mitigation.")
-        self.logger.info(
-            "Deleting previous symbolic link and making new one between "
-            "'*.raw.gpt' and '*.raw.gmrt_dat' file."
-        )
+        self.logger.info("Done with RFI mitigation.\n" \
+        "Deleting previous symbolic link and making new one between '*.raw.gpt' and '*.raw.gmrt_dat' file.")
 
         # Delete previous symbolic link between "*.raw" and "*.raw.gmrt_dat" file.
 
@@ -398,14 +372,7 @@ class Filterbank(object):
 
         # Form new symbolic link between "*.raw.gpt" and "*.raw.gmrt_dat" file.
 
-        cmd_symb = "ln -s {}".format(
-            " ".join(
-                [
-                    self.path.replace(".raw", ".raw.gpt"),
-                    self.name.replace(".raw", ".raw.gmrt_dat"),
-                ]
-            )
-        )
+        cmd_symb = f"ln -s {self.path.replace('.raw', '.raw.gpt')} {self.name.replace('.raw', '.raw.gmrt_dat')}"
         arg_symb = shlex.split(cmd_symb)
         proc_symb = subprocess.Popen(arg_symb)
         proc_symb.wait()
@@ -421,37 +388,23 @@ class Filterbank(object):
 
         # Copy header file to current working directory.
 
-        cmd_cp = "cp {} {}".format(
-            self.path.replace(".raw", ".raw.hdr"),
-            self.name.replace(".raw", ".raw.gmrt_hdr"),
-        )
+        cmd_cp = f"cp {self.path.replace('.raw', '.raw.hdr')} {self.name.replace('.raw', '.raw.gmrt_hdr')}"
         arg_cp = shlex.split(cmd_cp)
         proc_cp = subprocess.Popen(arg_cp)
         proc_cp.wait()
 
         # Create filterbank file.
 
-        cmd_filbnk = "filterbank {} > {}".format(
-            self.name.replace(".raw", ".raw.gmrt_dat"),
-            self.path.replace(".raw", ".fil"),
-        )
-        proc_filbnk = subprocess.Popen(
-            cmd_filbnk, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-        )
+        cmd_filbnk = f"filterbank {self.name.replace('.raw', '.raw.gmrt_dat')} > {self.path.replace('.raw', '.fil')}"
+        proc_filbnk = subprocess.Popen(cmd_filbnk, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         proc_filbnk.wait()
 
-        self.logger.info(
-            "Filterbank file created. "
-            "Delete all GPTool related files and symbolic links."
-        )
+        self.logger.info("Filterbank file created. Delete all GPTool related files and symbolic links.")
 
         # Delete ALL GPTool-associated files and the symbolic link.
 
         proc_rm_gpt_cwd = subprocess.Popen("rm -rf *gpt*", shell=True)
-        proc_rm_gpt = subprocess.Popen(
-            "rm -rf {}".format(os.path.join(os.path.dirname(self.path), "*gpt*")),
-            shell=True,
-        )
+        proc_rm_gpt = subprocess.Popen(f"rm -rf {os.path.join(os.path.dirname(self.path), '*gpt*')}", shell=True)
         os.remove(self.name.replace(".raw", ".raw.gmrt_dat"))
         os.remove(self.name.replace(".raw", ".raw.gmrt_hdr"))
 
@@ -466,16 +419,8 @@ class Filterbank(object):
 
             self.logger.info("Start zeroDM filtering, since backend is GSB.")
 
-            cmd_zdm = "zerodm {} > {}".format(
-                self.path.replace(".raw", ".fil"),
-                self.path.replace(".raw", ".zeroDM.fil"),
-            )
-            proc_zdm = subprocess.Popen(
-                cmd_zdm,
-                shell=True,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
+            cmd_zdm = f"zerodm {self.path.replace('.raw', '.fil')} > {self.path.replace('.raw', '.zeroDM.fil')}"
+            proc_zdm = subprocess.Popen(cmd_zdm, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             proc_zdm.wait()
 
             self.logger.info("Done with zeroDM filtering.")
@@ -486,10 +431,7 @@ class Filterbank(object):
 
         if self.name.endswith(".raw"):
 
-            self.logger.info(
-                "Starting creation of the filterbank file from "
-                "the raw file, {}".format(self.name)
-            )
+            self.logger.info(f"Starting creation of the filterbank file from the raw file, {self.name}")
 
             template_path = os.path.join(
                 self.config.preprocessing_path, self.config.backend
@@ -524,11 +466,13 @@ class Filterbank(object):
                 self.name = self.name.replace(".raw", ".zeroDM.fil")
                 self.path = self.path.replace(".raw", ".zeroDM.fil")
 
+            self.logger.info("Done with filterbank file creation.")
+
     def make_dirs(self):
 
         """ Make all output directories. """
 
-        self.logger.info("Make all appropriate directories.")
+        self.logger.debug("Making directories.")
 
         os.makedirs(self.timeseries_path, exist_ok=True)
         os.makedirs(self.output_rfi_path, exist_ok=True)
@@ -536,7 +480,7 @@ class Filterbank(object):
         os.makedirs(self.fold_prf_path, exist_ok=True)
         os.makedirs(self.arv_prf_path, exist_ok=True)
 
-        self.logger.info("Done making directories.")
+        self.logger.debug("Done making directories.")
 
     def load_header(self):
 
@@ -550,7 +494,7 @@ class Filterbank(object):
         # command and getting the required parameters by piping the output into
         # "grep"s for each parameter.
 
-        self.logger.info("Extract all variables from the header.")
+        self.logger.debug("Extracting variables from the header.")
 
         cmd1 = "header " + self.path
         cmd2 = []
@@ -580,7 +524,7 @@ class Filterbank(object):
         self.TSAMP = variables[3]  # Sampling time.
         self.OBSVT = variables[4]  # Length of the observation.
 
-        self.logger.info("Done extracting variables.")
+        self.logger.debug("Done extracting variables.")
 
     def segmented_dedisp(self, dm_segment):
 
@@ -612,9 +556,7 @@ class Filterbank(object):
             os.path.join(self.timeseries_path, self.output_name),
         )
         arg_dedisp = shlex.split(cmd_dedisp)
-        proc_dedisp = subprocess.Popen(
-            arg_dedisp, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-        )
+        proc_dedisp = subprocess.Popen(arg_dedisp, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         proc_dedisp.wait()
 
     def para_dedisp(self):
@@ -640,17 +582,11 @@ class Filterbank(object):
             )
         ]
 
-        self.logger.info(
-            "Starting dedispersion. Parallely running {:d} worker processes "
-            "across {:d} DM trials.".format(len(self.dm_segments), numDMs)
-        )
+        self.logger.info(f"Parallely running {len(self.dm_segments)} worker processes across {numDMs} DM trials.")
         with Pool() as pool:
             [p for p in pool.map(self.segmented_dedisp, self.dm_segments)]
 
-        self.logger.info(
-            "Done with dedispersion. "
-            "Number of DM trials processed: {:d}".format(self.proc_dm_trials)
-        )
+        self.logger.info(f"Done with dedispersion. Number of DM trials processed: {self.proc_dm_trials}")
 
         self._attrs_["proc_dm_trials"] = self.proc_dm_trials
 
@@ -661,9 +597,7 @@ class Filterbank(object):
         high computational speeds.
         """
 
-        self.logger.info(
-            "Starting the FFA search on {:d} timeseries.".format(self.proc_dm_trials)
-        )
+        self.logger.info(f"Starting the FFA search on {self.proc_dm_trials} timeseries.")
 
         ffa_module_path = os.path.join(self.config.scripts_path, "pipeline.py")
 
@@ -675,20 +609,10 @@ class Filterbank(object):
 
         # Run the "pipeline.py" script.
 
-        proc_ffa = subprocess.Popen(
-            "python {} {} {} {}".format(
-                ffa_module_path, ffa_config_path, glob_pattern, self.cands_path
-            ),
-            shell=True,
-        )  # ,
-        # stdout = subprocess.DEVNULL,
-        # stderr = subprocess.DEVNULL)
+        proc_ffa = subprocess.Popen(f"python {ffa_module_path} {ffa_config_path} {glob_pattern} {self.cands_path}", shell=True)
         proc_ffa.communicate()
 
-        self.logger.info(
-            "Done with the FFA search. "
-            "{:d} candidates generated.".format(self.num_candidates)
-        )
+        self.logger.info(f"Done with the FFA search. {self.num_candidates} candidates generated.")
 
         self._attrs_["num_candidates"] = self.num_candidates
 
@@ -699,16 +623,11 @@ class Filterbank(object):
         number of cores available per node.
         """
 
-        self.logger.info(
-            "Plotting all candidates in batches of {:d}.".format(self.config.cores)
-        )
-
-        #
+        self.logger.info(f"Plotting candidates in batches of {self.config.cores}.")
 
         matplotlib.use("Agg")
 
         # Disable the "too many figures open" warning raised by "matplotlib".
-
         matplotlib.pyplot.rcParams.update({"figure.max_open_warning": 0})
 
         candidates = []
@@ -727,41 +646,18 @@ class Filterbank(object):
 
                 for candidate in plot_batch:
 
-                    cand_plot_obj = CandidatePlot(Candidate.load_hdf5(candidate.path))
-                    cand_plot_obj.saveimg(
-                        os.path.join(images_path, candidate.name.replace(".h5", ".png"))
-                    )
+                    cand_plot_obj = CandidatePlot(Candidate.load_hdf5(candidate.path), figsize=(16, 5), dpi=80)
+                    cand_plot_obj.saveimg(os.path.join(images_path, candidate.name.replace(".h5", ".png")))
 
-        self.logger.info(
-            "All candidates plotted. "
-            "Compile all plots into single PDF file. "
-            "Delete all PNG files."
-        )
+        self.logger.info(f"All candidates plotted. Compile all plots into single PDF file. Delete all PNG files.")
 
         # Turn all PNG files into a single PDF and delete the "png" directory.
         make_pdf(images_path, plot_path)
-        proc_rm = subprocess.Popen(
-            "rm -rf {}".format(images_path),
-            shell=True,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-
-        # Delete all timeseries because we are done with them now.
-
-        [
-            os.remove(timeseries)
-            for timeseries in filter_by_ext(self.timeseries_path, extension=".dat")
-        ]
-
-        # And their headers too.
-
-        [
-            os.remove(headers)
-            for headers in filter_by_ext(self.timeseries_path, extension=".inf")
-        ]
+        proc_rm = subprocess.Popen(f"rm -rf {images_path}", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
         self.logger.info("Done with plotting. Delete all timeseries.")
+        [os.remove(timeseries) for timeseries in filter_by_ext(self.timeseries_path, extension=".dat")]
+        [os.remove(headers) for headers in filter_by_ext(self.timeseries_path, extension=".inf")]
 
     def fold_candidate(self, cand_path):
 
@@ -828,12 +724,7 @@ class Filterbank(object):
         until all candidates have been folded.
         """
 
-        self.logger.info(
-            "Start folding {:d} candidates. "
-            "Fold {:d} candidates parallely.".format(
-                self.num_candidates, self.config.cores
-            )
-        )
+        self.logger.info(f"Start folding {self.num_candidates} candidates. Fold {self.config.cores} candidates parallely.")
 
         # Change to directory where folded profiles are to be stored.
 
@@ -854,11 +745,7 @@ class Filterbank(object):
                 ]
                 wait(processes)
 
-        self.logger.info(
-            "All candidates folded. "
-            "Compile all plots into single PDF file. "
-            "Delete all PS files."
-        )
+        self.logger.info("All candidates folded. Compile all plots into single PDF file. Delete all PS files.")
 
         # Use "ghostscript" to combine all .ps files into a single PDF.
 
@@ -874,7 +761,7 @@ class Filterbank(object):
 
         os.chdir(cwd)
 
-        self.logger.info("Folding done for {:d} candidates.".format(self.num_fold_prfs))
+        self.logger.info(f"Folding done for {self.num_fold_prfs} candidates.")
 
         self._attrs_["num_fold_prfs"] = self.num_fold_prfs
 
@@ -912,9 +799,7 @@ class Filterbank(object):
         ]
         [proc_arv.wait() for proc_arv in proc_arvs]
 
-        self.logger.info(
-            "Archiving done for {:d} candidates.".format(self.num_arv_prfs)
-        )
+        self.logger.info(f"Archiving done for {self.num_arv_prfs} candidates.")
 
         self._attrs_["num_arv_prfs"] = self.num_arv_prfs
 
@@ -926,7 +811,7 @@ class Filterbank(object):
 
         """ Start processing the filterbank file. """
 
-        self.logger.info("Start processing {}.".format(self.output_name))
+        self.logger.log(MultiColorFormatter.LOG_LEVEL_NUM, f"Start processing {self.output_name}.")
         start_time = timeit.default_timer()
 
         self.make_fil()
@@ -936,14 +821,15 @@ class Filterbank(object):
         self.load_header()
         
         start_dedisp_time = timeit.default_timer()
-        self.logger.info("Starting dedispersion...")
+        self.logger.log(MultiColorFormatter.LOG_LEVEL_NUM, "Starting dedispersion...")
         self.para_dedisp()
         dedisp_time = timeit.default_timer()
 
-        self.logger.info("Starting FFA search...")
+        self.logger.log(MultiColorFormatter.LOG_LEVEL_NUM, "Starting FFA search...")
         self.fast_folding()
         FFA_time = timeit.default_timer()
 
+        self.logger.log(MultiColorFormatter.LOG_LEVEL_NUM, "Plotting candidates...")
         self.plot_candidates()
         plot_time = timeit.default_timer()
 
@@ -955,10 +841,10 @@ class Filterbank(object):
 
         end_time = timeit.default_timer()
         self._cumulative_walltime = (end_time - start_time)
-        self.logger.info("Done processing {}.".format(self.output_name))
-        self.logger.info("Time taken to make filterbank files: {}".format(timedelta(seconds=(make_fil_time - start_time))))
-        self.logger.info("Time taken to make directories and load header: {}".format(timedelta(seconds=(start_dedisp_time - make_fil_time))))
-        self.logger.info("Time taken for dedispersion: {}".format(timedelta(seconds=(dedisp_time - start_dedisp_time))))
-        self.logger.info("Time taken for FFA search: {}".format(timedelta(seconds=(FFA_time - dedisp_time))))
-        self.logger.info("Time taken for plotting candidates: {}".format(timedelta(seconds=(plot_time - FFA_time))))
-        self.logger.info("Total processing time: {}".format(self.cumulative_walltime()))
+        self.logger.log(MultiColorFormatter.LOG_LEVEL_NUM, "Done processing {}.".format(self.output_name))
+        self.logger.log(MultiColorFormatter.LOG_LEVEL_NUM, "Time taken to make filterbank files: {}".format(timedelta(seconds=(make_fil_time - start_time))))
+        self.logger.log(MultiColorFormatter.LOG_LEVEL_NUM, "Time taken to make directories and load header: {}".format(timedelta(seconds=(start_dedisp_time - make_fil_time))))
+        self.logger.log(MultiColorFormatter.LOG_LEVEL_NUM, "Time taken for dedispersion: {}".format(timedelta(seconds=(dedisp_time - start_dedisp_time))))
+        self.logger.log(MultiColorFormatter.LOG_LEVEL_NUM, "Time taken for FFA search: {}".format(timedelta(seconds=(FFA_time - dedisp_time))))
+        self.logger.log(MultiColorFormatter.LOG_LEVEL_NUM, "Time taken for plotting candidates: {}".format(timedelta(seconds=(plot_time - FFA_time))))
+        self.logger.log(MultiColorFormatter.LOG_LEVEL_NUM, "Total processing time: {}".format(self.cumulative_walltime()))
