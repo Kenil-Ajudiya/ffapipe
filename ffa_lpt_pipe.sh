@@ -26,7 +26,7 @@ Examples:
     $(basename "$0") -i /path/to/input_obs_dirs.txt -o /path/to/output_dir -n /path/to/nodes.list -b GWB
     $(basename "$0") -h
 
-Author: Kenil Ajudiya (kenilr@alum.iisc.ac.in);       Date: 2025-11-13
+Author: Kenil Ajudiya (kenilr@iisc.ac.in);       Date: 2025-12-01
 EOF
 }
 
@@ -150,16 +150,18 @@ xtract_N_chk() {
     if [[ "$EXIT_CODE" -eq 0 ]]; then
         echo -e "${BCYN}$(date '+%Y-%m-%d %H:%M:%S') # INFO #${RST} Successfully extracted the beams into filterbank files for scan: $SCAN"
         cp $AHDR_FILES $output_dir/state/$SCAN
+        cp $AHDR_FILES $FIL_DIR/$SCAN
         rm -f $RAW_FILES
         return 0
     else
         echo "$REMOTE_OUTPUT"
         echo -e "${BLD}${BRED}$(date '+%Y-%m-%d %H:%M:%S') # ERROR # xtract2fil command failed for scan: $SCAN with exit code $EXIT_CODE.${RST}"
+        rm -rf $FIL_DIR/$SCAN
         return 1
     fi
 }
 
-unite_PDFs() {
+unite_PDFs_N_chk() {
     echo -e "${BCYN}$(date '+%Y-%m-%d %H:%M:%S') # INFO #${RST} Combining all the PDFs in the BM** directories into a single PDF."
     UPPER_BMS=$((TOTAL_BMS-1))
     CAND_PDFS=($(eval echo "${OP_SCAN_DIR}/BM{0..$UPPER_BMS}.down/candidates/candidate_plts.pdf"))
@@ -242,15 +244,17 @@ analysis() {
 
                     SCAN=$(basename -s .raw.0.ahdr "$SCAN")
                     OP_SCAN_DIR=${output_dir}/state/${SCAN}
+                    mkdir -p "$OP_SCAN_DIR"
                     SCAN_PROC_STATUS_LOG_FILE="${OP_SCAN_DIR}/${SCAN}_proc_status.log"
                     echo -e "${BLD}${BGRN}$(date '+%Y-%m-%d %H:%M:%S') # LOG # Starting to process the following scan: $SCAN${RST}"
                     echo "Starting to process the following scan: $SCAN. Check ./${SCAN}/${SCAN}_proc_status.log for details." >> $OBS_PROC_STATUS_LOG_FILE
-                    if [[ -d "$FIL_DIR/$SCAN" ]] && (( $(ls -1 "$FIL_DIR/$SCAN" | wc -l) == TOTAL_BMS )); then
+                    # Check if the expected number of filterbank files are already present and are valid, and extract if not.
+                    if [[ -d "$FIL_DIR/$SCAN" ]] && (( $(eval ls -1 "$FIL_DIR/$SCAN/*.fil" | wc -l) == TOTAL_BMS )); then
                         echo -e "${BCYN}$(date '+%Y-%m-%d %H:%M:%S') # INFO #${RST} Found the expected number of filterbank files."
                         # Even if the filterbank files are present, check if xtract_N_chk had succeeded earlier by looking for the .ahdr files.
                         MISSING_AHDRS=0
                         for i in $(seq 0 $UPPER); do
-                            if [[ ! -f "$output_dir/state/${SCAN}/${SCAN}.raw.$i.ahdr" ]]; then
+                            if [[ ! -f "${FIL_DIR}/${SCAN}/${SCAN}.raw.$i.ahdr" ]]; then
                                 MISSING_AHDRS=1
                                 break
                             fi
@@ -303,8 +307,9 @@ analysis() {
                         echo "Pipeline run succeeded." >> $SCAN_PROC_STATUS_LOG_FILE
                     fi
 
+                    # Combine all the candidate_plts.pdf files into a single PDF.
                     if [[ ! -f "${OP_SCAN_DIR}/${SCAN}_candidates_combined.pdf" ]]; then
-                        unite_PDFs
+                        unite_PDFs_N_chk
                         if [[ $? -eq 1 ]]; then
                             echo "PDF unification failed." >> $SCAN_PROC_STATUS_LOG_FILE
                             OBS_PROC_STATUS=1
@@ -340,8 +345,6 @@ analysis() {
 }
 
 main() {
-    echo -e "${BLD}${BGRN}$(date '+%Y-%m-%d %H:%M:%S') # LOG # Starting FFA pipeline setup and execution...${RST}"
-
     # Initialize variables for the flags and option
     flag_a=false            # Flag for -a
     backend="SPOTLIGHT"     # Stores the value for the -b option
@@ -479,6 +482,7 @@ main() {
         esac
     done
 
+    echo -e "${BLD}${BGRN}$(date '+%Y-%m-%d %H:%M:%S') # LOG # Starting FFA pipeline setup and execution...${RST}"
     echo -e "${BLD}${BGRN}$(date '+%Y-%m-%d %H:%M:%S') # LOG # Performing sanity checks...${RST}"
     sanity_checks
     echo -e "${BLD}${BGRN}$(date '+%Y-%m-%d %H:%M:%S') # LOG # Sanity checks passed.${RST}"
@@ -508,6 +512,11 @@ MPI_CONFIG_DIR="${FFA_PIPE_REPO}/configurations/MPI_config"
 HOSTFILE="${MPI_CONFIG_DIR}/hosts.txt"
 RANKFILE="${MPI_CONFIG_DIR}/ranks.txt"
 STATUS_LOG_FILE="/lustre_archive/spotlight/data/MON_DATA/das_log/FFAPipe_status.log"
-PROC_LOG_FILE="/lustre_data/spotlight/data/watched/FFAPipe_logs/observation_processing.log"
+LOG_DIR="/lustre_data/spotlight/data/watched/FFAPipe_logs"
+PROC_LOG_FILE="${LOG_DIR}/observation_processing.log"
+STD_LOG="$LOG_DIR/$(date +%Y%m%d_%H%M%S).log"
+
+# redirect stdout and stderr to both the log and the terminal
+exec > >(tee -a "$STD_LOG") 2> >(tee -a "$STD_LOG" >&2)
 
 main "$@"

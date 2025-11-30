@@ -80,6 +80,11 @@ class CfgManager(object):
         return self._config["path_variables"]["store_path"].rstrip(os.path.sep)
     
     @property
+    def logs_path(self):
+        """ The absolute path where all logs are stored. """
+        return self._config["path_variables"]["logs_path"].rstrip(os.path.sep)
+    
+    @property
     def output_path(self):
         """ The absolute path where all outputs are stored. """
         return self._config["path_variables"]["output_path"].rstrip(os.path.sep)
@@ -124,6 +129,7 @@ class CfgManager(object):
         """ All path variables compiled into a dictionary. """
         PathDict = {
             "store_path": self.store_path,
+            "logs_path": self.logs_path,
             "pipeline_path": self.pipeline_path,
             "configurations_path": self.configurations_path,
             "scripts_path": self.scripts_path,

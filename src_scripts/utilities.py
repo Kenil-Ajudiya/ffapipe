@@ -2,7 +2,6 @@
 
 ### Standard imports ###
 
-import re
 import os
 import pickle
 import logging
@@ -233,13 +232,14 @@ def make_pdf(img_dir, save_to_pdf):
     """
 
     img_files = filter_by_ext(img_dir, extension = '.png')
-    images = []
+    images: list[Image.Image] = []
 
     for img_file in img_files:
-
-        IMG = Image.open(img_file.path)
-        if IMG.mode == 'RGBA':
-            IMG = IMG.convert('RGB')
-        images.append(IMG)
-
-    images[0].save(save_to_pdf, save_all = True, quality=100, append_images = images[1:])
+        with Image.open(img_file.path) as img:
+            if img.mode == 'RGBA':
+                img = img.convert('RGB')
+            images.append(img.copy())
+    if len(images) == 1:
+        images[0].save(save_to_pdf, format='PDF', quality=100)
+    elif len(images) > 1:
+        images[0].save(save_to_pdf, save_all = True, format='PDF', quality=100, append_images = images[1:])

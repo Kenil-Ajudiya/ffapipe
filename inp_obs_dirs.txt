@@ -1,6 +1,11 @@
-#/lustre_data/spotlight/data/TST_RTP_20250814_154217
-#/lustre_data/spotlight/data/TEST_RT_20250813_203023
-#/lustre_data/spotlight/data/TST_FFA_20250824_111336
-#/lustre_data/spotlight/data/48_024_20250823_191645
-#/lustre_data/spotlight/data/48_157_20250825_112042
-/lustre_data/spotlight/data/48_056_20250802_180207
+#####           Observation Directory                                                 Success
+#/lustre_data/spotlight/data/TST_RTP_20250814_154217                                    Yes
+#/lustre_data/spotlight/data/TEST_RT_20250813_203023                                    Yes
+#/lustre_data/spotlight/data/TST_FFA_20250824_111336                                    Yes
+#/lustre_data/spotlight/data/48_024_20250823_191645                                     Yes
+#/lustre_data/spotlight/data/48_157_20250825_112042                                     Yes
+#/lustre_data/spotlight/data/48_056_20250802_180207                                     Yes
+#/lustre_data/spotlight/data/48_017A_20250725_122717                                    Yes
+#/lustre_data/spotlight/data/48_024_20250803_172118                                      No
+#/lustre_data/spotlight/data/48_024_20250809_063951                                      No
+/lustre_data/spotlight/data/48_026_20250718_214658

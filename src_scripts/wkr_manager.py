@@ -3,6 +3,7 @@
 ### Standard imports ###
 
 import os
+from glob import glob
 import timeit
 import pickle
 import logging
@@ -168,10 +169,13 @@ class PipelineWorker(object):
             #####################################################################################
 
             # Unpickle list of Meta objects and get the filenames from them.
-            
-            for rnk in range(NRANKS):
-                metalist = f"./{self.date}.history_{rnk}.log"
-                _metalist_ = unpickler(metalist)
+
+            metas_file_list = glob(f"{self.config.logs_path}/{self.date}.history_*.log")
+            if not metas_file_list:
+                metas_file_list = [f"{self.config.logs_path}/{self.date}.history_{rnk}.log" for rnk in range(NRANKS)]
+
+            for metas_file in metas_file_list:
+                _metalist_ = unpickler(metas_file)
 
                 # Decide which mode to open the hidden log file in based on whether it already exists
                 # or not and filter the list of files accordingly and iterate through them to process
@@ -185,7 +189,7 @@ class PipelineWorker(object):
                         _proc_files_.append(meta["fname"])
                 
                 except StopIteration:
-                    with open(metalist, "wb+") as _mem_:
+                    with open(metas_file, "wb+") as _mem_:
                         pickle.dump(self.config, _mem_)
                     continue
 
@@ -207,6 +211,8 @@ class PipelineWorker(object):
             else:
                 FILES = FILES[RANK * n_files_per_rank : (RANK + 1) * n_files_per_rank]
 
+            metas_file = f"{self.config.logs_path}/{self.date}.history_{RANK}.log"
+
             #####################################################################################
 
             # Path to the human readable version of the log file.
@@ -217,7 +223,7 @@ class PipelineWorker(object):
 
             for FILE in FILES:
 
-                with open(metalist, "ab") as _mem_, open(filelist, "a") as _list_:
+                with open(metas_file, "ab") as _mem_, open(filelist, "a") as _list_:
 
                     # Initialise the filterbank file and process it.
 
@@ -238,7 +244,7 @@ class PipelineWorker(object):
                     # the file in a human readable filelist.
 
                     pickle.dump(filterbank.metadata, _mem_)
-                    _list_.write("{}\n".format(FIL_NAME))
+                    _list_.write(f"{FIL_NAME}\n")
 
                     # Delete the filterbank file if we started with a "*.raw" file.
                     # Otherwise leave it be.

@@ -58,7 +58,7 @@
 
 pipeline_variables:
 
-    cores: 42
+    cores: 48
 
 # Multiple scans can be defined here. However, keep in mind that only one line
 # should remain uncommented. The scans left uncommented (for all the 3 different
@@ -81,10 +81,11 @@ path_variables:
     store_path: /lustre_data/spotlight/data/48_056_20250802_180207/FilData_dwnsmp
     output_path: /lustre_data/spotlight/data/48_056_20250802_180207/FFAPipeData
     pipeline_path: /lustre_archive/apps/tdsoft/ffapipe/
+    logs_path: /lustre_data/spotlight/data/watched/FFAPipe_logs/
 
 RFI Masking:
     
-    Bad channels: 
+    Bad channels:
         GSB: 1:20,1000:1024
         GWB: 1:650,2400:2800,4000:4096
         SIM: 1:650,2400:2800,4000:4096

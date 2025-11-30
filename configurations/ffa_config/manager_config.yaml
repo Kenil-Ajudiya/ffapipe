@@ -6,7 +6,7 @@ fmin: 300
 fmax: 500
 
 # Number of time series searched in parallel
-num_processes: 42
+num_processes: 48
 
 # Max value of DM x |sin(b)|. Sets an upper limit on DM trials as a function
 # of observed sky coordinates. If left blank, no upper limit is applied.

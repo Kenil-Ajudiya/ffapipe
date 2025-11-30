@@ -84,7 +84,7 @@ class Filterbank(object):
 
         # Configure the logger.
 
-        self.configure_logger()
+        self.configure_logger(logs_path=self.config.logs_path)
 
         # Store some attributes for later.
 
@@ -119,7 +119,7 @@ class Filterbank(object):
         total_time = timedelta(seconds=self._cumulative_walltime)
         return total_time
 
-    def configure_logger(self, level=logging.INFO):
+    def configure_logger(self, level=logging.INFO, logs_path="."):
 
         """ Configure the loggers for this filterbank file. """
 
@@ -136,7 +136,7 @@ class Filterbank(object):
 
         _formatter_ = logging.Formatter(fmt="%(message)s")
 
-        _handler_ = logging.FileHandler(f"./{self.date}.PIDS_{self.config.RANK}.log", mode="w+")
+        _handler_ = logging.FileHandler(f"{logs_path}/{self.date}.PIDS_{self.config.RANK}.log", mode="w+")
         _handler_.setFormatter(_formatter_)
         self.logger.addHandler(_handler_)
 
