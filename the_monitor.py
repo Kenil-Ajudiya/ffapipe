@@ -1,15 +1,7 @@
-# type: ignore
-
-### Standard imports. ###
-
 import os
 import curses
-import pickle
 
-### Local imports. ###
-
-from src_scripts.utilities import (reader,
-                                   unpickler)
+from src_scripts.utilities import reader, unpickler
 
 if __name__ == '__main__':
 

@@ -1,5 +1,3 @@
-# type: ignore
-
 from .metas import Meta
 from .cfg_manager import CfgManager
 from .filterbank_no_rfifind import Filterbank
@@ -23,6 +21,8 @@ __all__ = [
     "Filterbank",
     "PipelineWorker",
     "PipelineManager",
+    "unpickler",
+    "reader",
     "grouper",
     "filter_by_ext",
     "count_files",

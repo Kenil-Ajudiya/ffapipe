@@ -1,5 +1,3 @@
-# type: ignore
-
 import os
 import re
 import shlex
@@ -7,18 +5,13 @@ import timeit
 import logging
 import warnings
 import subprocess
-
 from datetime import datetime
 from datetime import timedelta
 from concurrent.futures import wait
 from concurrent.futures import ProcessPoolExecutor as Pool
-
-### Non-standard imports ###
-
 import fileinput
 import numpy as np
 import matplotlib
-
 from pytz import timezone
 from datetime import datetime
 from astropy.time import Time
@@ -26,8 +19,6 @@ from astropy.coordinates import SkyCoord
 
 from riptide.pipelines import Candidate
 from riptide.pipelines import CandidatePlot
-
-### Local imports ###
 from .utilities import grouper, filter_by_ext, count_files, step_iter, make_pdf, MultiColorFormatter
 from .metas import Meta
 
@@ -829,9 +820,9 @@ class Filterbank(object):
         self.fast_folding()
         FFA_time = timeit.default_timer()
 
-        self.logger.log(MultiColorFormatter.LOG_LEVEL_NUM, "Plotting candidates...")
-        self.plot_candidates()
-        plot_time = timeit.default_timer()
+        # self.logger.log(MultiColorFormatter.LOG_LEVEL_NUM, "Plotting candidates...")
+        # self.plot_candidates()
+        # plot_time = timeit.default_timer()
 
         # self.fold_profiles()
         # self.archive_profiles()
@@ -846,5 +837,5 @@ class Filterbank(object):
         self.logger.log(MultiColorFormatter.LOG_LEVEL_NUM, "Time taken to make directories and load header: {}".format(timedelta(seconds=(start_dedisp_time - make_fil_time))))
         self.logger.log(MultiColorFormatter.LOG_LEVEL_NUM, "Time taken for dedispersion: {}".format(timedelta(seconds=(dedisp_time - start_dedisp_time))))
         self.logger.log(MultiColorFormatter.LOG_LEVEL_NUM, "Time taken for FFA search: {}".format(timedelta(seconds=(FFA_time - dedisp_time))))
-        self.logger.log(MultiColorFormatter.LOG_LEVEL_NUM, "Time taken for plotting candidates: {}".format(timedelta(seconds=(plot_time - FFA_time))))
+        # self.logger.log(MultiColorFormatter.LOG_LEVEL_NUM, "Time taken for plotting candidates: {}".format(timedelta(seconds=(plot_time - FFA_time))))
         self.logger.log(MultiColorFormatter.LOG_LEVEL_NUM, "Total processing time: {}".format(self.cumulative_walltime()))

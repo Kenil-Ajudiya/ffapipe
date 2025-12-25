@@ -1,5 +1,3 @@
-# type: ignore
-
 import os
 import textwrap
 import argparse
@@ -8,7 +6,6 @@ from src_scripts.cfg_manager import CfgManager
 from src_scripts.wkr_manager import PipelineManager
 
 # Parse arguments.
-
 parser = argparse.ArgumentParser(
     formatter_class=argparse.RawDescriptionHelpFormatter,
     usage=argparse.SUPPRESS,

@@ -1,25 +1,16 @@
-# type: ignore
-
-### Standard imports ###
-
 import os
 import re
 import shlex
 import timeit
 import logging
 import subprocess
-
 from datetime import datetime
 from datetime import timedelta
 from concurrent.futures import wait
 from concurrent.futures import ProcessPoolExecutor as Pool
-
-### Non-standard imports ###
-
 import fileinput
 import numpy as np
 import matplotlib
-
 from pytz import timezone
 from datetime import datetime
 from astropy.time import Time
@@ -27,9 +18,6 @@ from astropy.coordinates import SkyCoord
 
 from riptide.pipelines import Candidate
 from riptide.pipelines import CandidatePlot
-
-### Local imports ###
-
 from .utilities import grouper, filter_by_ext, count_files, step_iter, make_pdf
 from .metas import Meta
 

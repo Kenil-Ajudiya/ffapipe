@@ -1,22 +1,13 @@
-# type: ignore
-
-### Standard imports ###
-
 import os
 from glob import glob
 import timeit
 import pickle
 import logging
-
 from datetime import timedelta
 from concurrent.futures import ProcessPoolExecutor as Pool
 
-### Local imports ###
-
-from .utilities import unpickler, grouper, filter_by_ext, MultiColorFormatter
+from .utilities import unpickler, filter_by_ext, MultiColorFormatter
 from .filterbank_no_rfifind import Filterbank
-
-# from .filterbank import Filterbank
 
 def make_dirs(dirs=[]):
     """Make the appropriate directories.

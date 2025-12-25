@@ -1,14 +1,5 @@
-# type: ignore
-
-### Standard imports ###
-
 import os
-import pprint
-
-### Non-standard imports ###
-
 import yaml
-
 
 class CfgManager(object):
 

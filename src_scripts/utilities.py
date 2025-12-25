@@ -1,16 +1,8 @@
-# type: ignore
-
-### Standard imports ###
-
 import os
 import pickle
 import logging
-
-### Non-standard imports ###
-
 import itertools
 import numpy as np
-
 from PIL import Image
 
 class MultiColorFormatter(logging.Formatter):

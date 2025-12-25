@@ -178,10 +178,6 @@ filter_RFI(){
         if (( $(eval ls -1 "${FIL_DIR}/${SCAN}/BM*.down_RFI_Mitigated_01.fil" | wc -l) == $TOTAL_BMS )); then
             rm "${FIL_DIR}/${SCAN}"/BM*.down.fil
         fi
-        # # Overwrite BM*.down_RFI_Mitigated_01.fil with BM*.down.fil
-        # for f in "${FIL_DIR}/${SCAN}"/BM*.down_RFI_Mitigated_01.fil; do
-        #     mv "$f" "${f/_RFI_Mitigated_01/}"
-        # done
 
         return 0
     else

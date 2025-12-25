@@ -1,5 +1,3 @@
-# type: ignore
-
 import os
 from mpi4py import MPI
 import textwrap
@@ -14,14 +12,13 @@ parser = argparse.ArgumentParser(
     usage=argparse.SUPPRESS,
     description=textwrap.dedent(
         """
-    ################################################
-    GHRSS Survey FFA Pipeline: Multiple Nodes Script
-    ################################################
-    
-    Launches the GHRSS Survey FFA Pipeline on mutliple
-    machines. All dates are processed in parallel.
-    
-    usage: python %(prog)s -c [config_file] -b [backend]"""
+    ###################################
+    FFA Pipeline: Multiple Nodes Script
+    ###################################
+
+    Launches the FFA Pipeline on multiple nodes.
+
+    Usage: python %(prog)s -c [config_file] -b [backend] [-a]"""
     ),
 )
 
@@ -55,7 +52,6 @@ parser.add_argument(
 
 try:
     args = parser.parse_args()
-
 except:
     parser.print_help()
     parser.exit(1)

@@ -1,9 +1,4 @@
-# type: ignore
-
-### Standard imports. ###
-
 import pprint
-
 
 class Meta(dict):
 

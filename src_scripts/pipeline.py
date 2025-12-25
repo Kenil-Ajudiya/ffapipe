@@ -1,6 +1,3 @@
-# type: ignore
-
-### Standard imports ###
 import os
 import glob
 import logging
@@ -9,18 +6,16 @@ import itertools
 import operator
 import timeit
 from multiprocessing import Pool
-
-### Non-standard imports ###
 import yaml
 import numpy as np
 import pandas
 
-### Local imports ###
 from riptide import TimeSeries, ffa_search, find_peaks
 from riptide.pipelines import Candidate
 from riptide.clustering import cluster_1d
 from riptide.reading import PrestoInf, SigprocHeader
 from riptide.pipelines.harmonic_filtering import flag_harmonics
+
 logging.getLogger("Candidate").setLevel(logging.WARNING)
 
 from utilities import MultiColorFormatter
