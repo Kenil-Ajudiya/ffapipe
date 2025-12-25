@@ -126,6 +126,7 @@ generate_mpi_files() {
 xtract_N_chk() {
     RAW_FILES=$(eval echo "$BEAM_DIR/$SCAN.raw.{0..$UPPER}")
     AHDR_FILES=$(eval echo "$BEAM_DIR/$SCAN.raw.{0..$UPPER}.ahdr")
+
     REMOTE_OUTPUT=$(ssh -t -t "${nodes_list[0]}" "
         source ${TDSOFT}/env.sh;
         xtract2fil \
@@ -148,9 +149,10 @@ xtract_N_chk() {
     fi
     EXIT_CODE=$(echo "$REMOTE_OUTPUT" | tail -n 1 | tr -d '\r')
     if [[ "$EXIT_CODE" -eq 0 ]]; then
-        echo -e "${BCYN}$(date '+%Y-%m-%d %H:%M:%S') # INFO #${RST} Successfully extracted the beams into filterbank files for scan: $SCAN"
+        echo -e "${BLD}${BGRN}$(date '+%Y-%m-%d %H:%M:%S') # LOG # Successfully extracted the beams into filterbank files for scan: $SCAN${RST}"
         cp $AHDR_FILES $output_dir/state/$SCAN
         cp $AHDR_FILES $FIL_DIR/$SCAN
+        cp $AHDR_FILES $OBS_DIR/FilData/$SCAN
         rm -f $RAW_FILES
         return 0
     else
@@ -161,34 +163,94 @@ xtract_N_chk() {
     fi
 }
 
-unite_PDFs_N_chk() {
-    echo -e "${BCYN}$(date '+%Y-%m-%d %H:%M:%S') # INFO #${RST} Combining all the PDFs in the BM** directories into a single PDF."
-    UPPER_BMS=$((TOTAL_BMS-1))
-    CAND_PDFS=($(eval echo "${OP_SCAN_DIR}/BM{0..$UPPER_BMS}.down/candidates/candidate_plts.pdf"))
-    if (( $(ls ${CAND_PDFS[@]} 2>/dev/null | wc -l) !=  $TOTAL_BMS )); then
-        echo -e "${BLD}${BYLW}$(date '+%Y-%m-%d %H:%M:%S') # WARNING # Couldn't find $TOTAL_BMS candidate_plts.pdf files in ${OP_SCAN_DIR}/*/candidates/. Skipping PDF combination for scan: $SCAN. Please check and retry.${RST}"
-        return 1
-    fi
+filter_RFI(){
+    echo -e "${BLD}${BGRN}$(date '+%Y-%m-%d %H:%M:%S') # LOG # Starting RFI filtering for scan: $SCAN${RST}"
 
-    # REMOTE_OUTPUT=$(ssh -t -t "${nodes_list[0]}" "/lustre_archive/apps/tdsoft/bin/pdfunite ${OP_SCAN_DIR}/*/candidates/candidate_plts.pdf ${OP_SCAN_DIR}/${SCAN}_candidates.pdf")
-    REMOTE_OUTPUT=$(pdfunite "${CAND_PDFS[@]}" "${OP_SCAN_DIR}/${SCAN}_candidates.pdf"; echo $?)
+    cp ${FFA_PIPE_REPO}/configurations/filplan.json "${FIL_DIR}/${SCAN}"
 
-    LOCAL_SSH_STATUS=$?
-    if [[ "$LOCAL_SSH_STATUS" -eq 255 ]]; then
-        echo -e "${BLD}${BRED}$(date '+%Y-%m-%d %H:%M:%S') # ERROR # SSH connection failed.${RST}"
-        echo -e "${BLD}${BMAG}$(date '+%Y-%m-%d %H:%M:%S') # HELP # SSH command exit status: $LOCAL_SSH_STATUS${RST}"
-        exit 1
-    fi
-    EXIT_CODE=$(echo "$REMOTE_OUTPUT" | tail -n 1 | tr -d '\r')
-    if [[ "$EXIT_CODE" -eq 0 ]]; then
-        echo -e "${BCYN}$(date '+%Y-%m-%d %H:%M:%S') # INFO #${RST} Successfully combined all the PDFs for scan: $SCAN"
-        mv "${OP_SCAN_DIR}/${SCAN}_candidates.pdf" "${OP_SCAN_DIR}/${SCAN}_candidates_combined.pdf"
+    $MPIRUN $MPI_ARGS "python" "${RFI_FILTER_SCRIPT}" --workers 48 "${FIL_DIR}/${SCAN}"
+
+    rm "${FIL_DIR}/${SCAN}/filplan.json"
+
+    if [[ $? -eq 0 ]]; then
+        echo -e "${BLD}${BGRN}$(date '+%Y-%m-%d %H:%M:%S') # LOG # Successfully completed RFI filtering for scan: $SCAN${RST}"
+
+        if (( $(eval ls -1 "${FIL_DIR}/${SCAN}/BM*.down_RFI_Mitigated_01.fil" | wc -l) == $TOTAL_BMS )); then
+            rm "${FIL_DIR}/${SCAN}"/BM*.down.fil
+        fi
+        # # Overwrite BM*.down_RFI_Mitigated_01.fil with BM*.down.fil
+        # for f in "${FIL_DIR}/${SCAN}"/BM*.down_RFI_Mitigated_01.fil; do
+        #     mv "$f" "${f/_RFI_Mitigated_01/}"
+        # done
+
         return 0
     else
-        echo "$REMOTE_OUTPUT"
-        echo -e "${BLD}${BRED}$(date '+%Y-%m-%d %H:%M:%S') # ERROR # pdfunite command failed for scan: $SCAN with exit code $EXIT_CODE.${RST}"
-        echo -e "${BLD}${BYLW}$(date '+%Y-%m-%d %H:%M:%S') # WARNING # Removing incomplete/partially created PDF file: ${OP_SCAN_DIR}/${SCAN}_candidates.pdf${RST}"
-        rm -f "${OP_SCAN_DIR}/${SCAN}_candidates.pdf" 2>/dev/null
+        echo -e "${BLD}${BRED}$(date '+%Y-%m-%d %H:%M:%S') # ERROR # RFI filtering failed for scan: $SCAN.${RST}"
+        return 1
+    fi
+}
+
+run_ffapipe(){
+    echo -e "${BLD}${BGRN}$(date '+%Y-%m-%d %H:%M:%S') # LOG # Launching the FFA pipeline.${RST}"
+
+    if [[ "$flag_a" == "true" ]]; then
+        $MPIRUN $MPI_ARGS "python" "${FFA_EXE}" "-c" "${FFA_CONFIG}" "-b" "$backend" "-a"
+    else
+        $MPIRUN $MPI_ARGS "python" "${FFA_EXE}" "-c" "${FFA_CONFIG}" "-b" "$backend"
+    fi
+
+    if [[ $? -eq 0 ]]; then
+        echo -e "${BLD}${BGRN}$(date '+%Y-%m-%d %H:%M:%S') # LOG # Successfully completed pipeline run for scan: $SCAN${RST}"
+        return 0
+    else
+        echo -e "${BLD}${BRED}$(date '+%Y-%m-%d %H:%M:%S') # ERROR # Pipeline run failed for scan: $SCAN.${RST}"
+        return 1
+    fi
+}
+
+filter_candidates(){
+    echo -e "${BLD}${BGRN}$(date '+%Y-%m-%d %H:%M:%S') # LOG # Starting candidate filtering for scan: $SCAN${RST}"
+
+    ssh -t -t "${nodes_list[0]}" "
+        source ${TDSOFT}/env.sh;
+        python -u ${FFA_PIPE_REPO}/src_scripts/cand_filter.py ${OP_SCAN_DIR}"
+
+    EXIT_CODE=$?
+    if [[ "$EXIT_CODE" -eq 255 ]]; then
+        echo -e "${BLD}${BRED}$(date '+%Y-%m-%d %H:%M:%S') # ERROR # SSH connection failed.${RST}"
+        echo -e "${BLD}${BMAG}$(date '+%Y-%m-%d %H:%M:%S') # HELP # SSH command exit status: $EXIT_CODE${RST}"
+        exit 1
+    fi
+    if [[ "$EXIT_CODE" -eq 0 ]]; then
+        echo -e "${BLD}${BGRN}$(date '+%Y-%m-%d %H:%M:%S') # LOG # Successfully completed candidate optimisation for scan: $SCAN${RST}"
+        return 0
+    else
+        echo -e "${BLD}${BRED}$(date '+%Y-%m-%d %H:%M:%S') # ERROR # Candidate optimisation failed for scan: $SCAN.${RST}"
+        return 1
+    fi
+}
+
+classify_candidates(){
+    echo -e "${BLD}${BGRN}$(date '+%Y-%m-%d %H:%M:%S') # LOG # Starting ML classification for scan: $SCAN${RST}"
+
+    ssh -t -t "${nodes_list[0]}" "
+        source ${TDSOFT}/env.sh;
+        conda activate ghvfdt_env;
+        export PYTHONPATH="$TDSOFT/riptide-0.0.1/:$PYTHONPATH";
+        python -u ${TDSOFT}/ghvfdt/GHVFDT_pipeline.py -c ${OP_SCAN_DIR}/combined_candidates.csv -o ${OP_SCAN_DIR}/${SCAN}_positive_candidates.pdf"
+    # Classify only the filtered candidates using GHVFDT after converging to a robust candidate sifting algorithm.
+
+    EXIT_CODE=$?
+    if [[ "$EXIT_CODE" -eq 255 ]]; then
+        echo -e "${BLD}${BRED}$(date '+%Y-%m-%d %H:%M:%S') # ERROR # SSH connection failed.${RST}"
+        echo -e "${BLD}${BMAG}$(date '+%Y-%m-%d %H:%M:%S') # HELP # SSH command exit status: $EXIT_CODE${RST}"
+        exit 1
+    fi
+    if [[ "$EXIT_CODE" -eq 0 ]]; then
+        echo -e "${BLD}${BGRN}$(date '+%Y-%m-%d %H:%M:%S') # LOG # Successfully completed ML classification for scan: $SCAN${RST}"
+        return 0
+    else
+        echo -e "${BLD}${BRED}$(date '+%Y-%m-%d %H:%M:%S') # ERROR # ML classification failed for scan: $SCAN.${RST}"
         return 1
     fi
 }
@@ -250,7 +312,7 @@ analysis() {
                     echo "Starting to process the following scan: $SCAN. Check ./${SCAN}/${SCAN}_proc_status.log for details." >> $OBS_PROC_STATUS_LOG_FILE
                     # Check if the expected number of filterbank files are already present and are valid, and extract if not.
                     if [[ -d "$FIL_DIR/$SCAN" ]] && (( $(eval ls -1 "$FIL_DIR/$SCAN/*.fil" | wc -l) == TOTAL_BMS )); then
-                        echo -e "${BCYN}$(date '+%Y-%m-%d %H:%M:%S') # INFO #${RST} Found the expected number of filterbank files."
+                        echo -e "${BLD}${BGRN}$(date '+%Y-%m-%d %H:%M:%S') # LOG # Found the expected number of filterbank files.${RST}"
                         # Even if the filterbank files are present, check if xtract_N_chk had succeeded earlier by looking for the .ahdr files.
                         MISSING_AHDRS=0
                         for i in $(seq 0 $UPPER); do
@@ -262,12 +324,12 @@ analysis() {
                         if [[ $MISSING_AHDRS -eq 1 ]]; then
                             echo -e "${BCYN}$(date '+%Y-%m-%d %H:%M:%S') # INFO #${RST} Some .ahdr files are missing. Re-running xtract2fil to ensure consistency."
                             xtract_N_chk
-                            if [[ $? -eq 1 ]]; then
+                            if [[ $? -eq 0 ]]; then
+                                echo "xtract_N_chk succeeded." >> $SCAN_PROC_STATUS_LOG_FILE
+                            else
                                 echo "xtract_N_chk failed." >> $SCAN_PROC_STATUS_LOG_FILE
                                 OBS_PROC_STATUS=1
                                 continue
-                            else
-                                echo "xtract_N_chk succeeded." >> $SCAN_PROC_STATUS_LOG_FILE
                             fi
                         else
                             echo "Valid filterbank and .ahdr files found." >> $SCAN_PROC_STATUS_LOG_FILE
@@ -280,51 +342,70 @@ analysis() {
                             continue
                         else
                             xtract_N_chk
-                            if [[ $? -eq 1 ]]; then
+                            if [[ $? -eq 0 ]]; then
+                                echo "xtract_N_chk succeeded." >> $SCAN_PROC_STATUS_LOG_FILE
+                            else
                                 echo "xtract_N_chk failed." >> $SCAN_PROC_STATUS_LOG_FILE
                                 OBS_PROC_STATUS=1
                                 continue
-                            else
-                                echo "xtract_N_chk succeeded." >> $SCAN_PROC_STATUS_LOG_FILE
                             fi
                         fi
                     fi
+
+                    # RFI filtering
+                    if (( $(eval ls -1 "$FIL_DIR/$SCAN/*RFI_Mitigated_01.fil" 2>/dev/null | wc -l) == $TOTAL_BMS )); then
+                        echo -e "${BLD}${BGRN}$(date '+%Y-%m-%d %H:%M:%S') # LOG # Found RFI mitigated filterbank files for scan: $SCAN. Skipping RFI filtering step.${RST}"
+                        echo "RFI mitigated filterbank files found." >> $SCAN_PROC_STATUS_LOG_FILE
+                    else
+                        echo -e "${BCYN}$(date '+%Y-%m-%d %H:%M:%S') # INFO #${RST} RFI mitigated filterbank files not found for scan: $SCAN. Starting RFI filtering step."
+                        filter_RFI
+                        if [[ $? -eq 0 ]]; then
+                            echo "RFI filtering succeeded." >> $SCAN_PROC_STATUS_LOG_FILE
+                            continue
+                        else
+                            echo "RFI filtering failed." >> $SCAN_PROC_STATUS_LOG_FILE
+                            OBS_PROC_STATUS=1
+                            continue
+                        fi
+                    fi
+
                     # Modify the LPTs_config.yaml file with the scan directory.
                     sed -i "75c\        SPOTLIGHT: $SCAN" $FFA_CONFIG
-
-                    echo -e "${BCYN}$(date '+%Y-%m-%d %H:%M:%S') # INFO #${RST} Launching the FFA pipeline."
-                    mpirun \
-                        -np ${NRANKS} \
-                        --hostfile "${HOSTFILE}" \
-                        --map-by rankfile:file="${RANKFILE}" \
-                        "${LAUNCH_FFAPIPE}" "false" "$backend"
-
-                    if [[ $? -eq 1 ]]; then
+                    run_ffapipe
+                    if [[ $? -eq 0 ]]; then
+                        echo "Pipeline run succeeded." >> $SCAN_PROC_STATUS_LOG_FILE
+                    else
                         echo "Pipeline run failed." >> $SCAN_PROC_STATUS_LOG_FILE
                         OBS_PROC_STATUS=1
                         continue
-                    else
-                        echo "Pipeline run succeeded." >> $SCAN_PROC_STATUS_LOG_FILE
                     fi
 
-                    # Combine all the candidate_plts.pdf files into a single PDF.
-                    if [[ ! -f "${OP_SCAN_DIR}/${SCAN}_candidates_combined.pdf" ]]; then
-                        unite_PDFs_N_chk
-                        if [[ $? -eq 1 ]]; then
-                            echo "PDF unification failed." >> $SCAN_PROC_STATUS_LOG_FILE
-                            OBS_PROC_STATUS=1
-                            continue
-                        else
-                            echo "PDF unification succeeded." >> $SCAN_PROC_STATUS_LOG_FILE
-                        fi
+                    # Candidate optimisation
+                    filter_candidates
+                    if [[ $? -eq 0 ]]; then
+                        echo "Candidate optimisation succeeded." >> $SCAN_PROC_STATUS_LOG_FILE
+                    else
+                        echo "Candidate optimisation failed." >> $SCAN_PROC_STATUS_LOG_FILE
+                        OBS_PROC_STATUS=1
+                        continue
+                    fi
+
+                    # ML classification
+                    classify_candidates
+                    if [[ $? -eq 0 ]]; then
+                        echo "ML classification succeeded." >> $SCAN_PROC_STATUS_LOG_FILE
+                    else
+                        echo "ML classification failed." >> $SCAN_PROC_STATUS_LOG_FILE
+                        OBS_PROC_STATUS=1
+                        continue
                     fi
                     echo -e "${BLD}${BGRN}$(date '+%Y-%m-%d %H:%M:%S') # LOG # Done processing the following scan: $SCAN${RST}"
                 done
 
-                if [[ $OBS_PROC_STATUS -eq 1 ]]; then
-                    echo "Observation processing failed." >> $OBS_PROC_STATUS_LOG_FILE
-                else
+                if [[ $OBS_PROC_STATUS -eq 0 ]]; then
                     echo "Observation processing succeeded." >> $OBS_PROC_STATUS_LOG_FILE
+                else
+                    echo "Observation processing failed." >> $OBS_PROC_STATUS_LOG_FILE
                 fi
             fi
         else
@@ -333,11 +414,7 @@ analysis() {
             sed -i "82c\    output_path: $output_dir" $FFA_CONFIG
             
             # Launch the FFA processing script with the specified parameters
-            mpirun \
-                -np ${NRANKS} \
-                --hostfile "${HOSTFILE}" \
-                --map-by rankfile:file="${RANKFILE}" \
-                "${LAUNCH_FFAPIPE}" "$flag_a" "$backend"
+            run_ffapipe
         fi
         echo -e "${BLD}${BGRN}$(date '+%Y-%m-%d %H:%M:%S') # LOG # Done processing the following observation: $(basename $OBS_DIR)${RST}"
         echo "Finished processing the following observation: $(basename $OBS_DIR)." >> $PROC_LOG_FILE
@@ -503,18 +580,33 @@ def_colors
 print_art
 
 TDSOFT="/lustre_archive/apps/tdsoft"
-source $TDSOFT/env.sh && conda activate FFA
+source $TDSOFT/env.sh && conda activate FFA;
+OMPI_PATH="/lustre_archive/apps/correlator/mpi"
+export PATH="${OMPI_PATH}/bin/:$PATH"
+export PYTHONPATH="$TDSOFT/riptide-0.0.1/:$PYTHONPATH"
 
 FFA_PIPE_REPO="${TDSOFT}/ffapipe"
-LAUNCH_FFAPIPE="${FFA_PIPE_REPO}/launch_ffapipe.sh"
+FFA_EXE="${FFA_PIPE_REPO}/multi_config.py"
+RFI_FILTER_SCRIPT="${FFA_PIPE_REPO}/src_scripts/rfi_filter_filtool.py"
 FFA_CONFIG="${FFA_PIPE_REPO}/configurations/LPTs_config.yaml"
+
 MPI_CONFIG_DIR="${FFA_PIPE_REPO}/configurations/MPI_config"
 HOSTFILE="${MPI_CONFIG_DIR}/hosts.txt"
 RANKFILE="${MPI_CONFIG_DIR}/ranks.txt"
+MPIRUN="${OMPI_PATH}/bin/mpirun"
+MPI_ARGS="--rankfile "${RANKFILE}" \
+          --prefix ${OMPI_PATH} \
+          -x PATH -x LD_LIBRARY_PATH -x PYTHONPATH \
+          --mca rmaps_dist_device mlx5_0 \
+          --mca btl_openib_if_include mlx5_0:1 \
+          --mca oob_tcp_if_include ib0 \
+          --mca btl_openib_allow_ib true \
+          --mca btl smcuda,self"
+
 STATUS_LOG_FILE="/lustre_archive/spotlight/data/MON_DATA/das_log/FFAPipe_status.log"
 LOG_DIR="/lustre_data/spotlight/data/watched/FFAPipe_logs"
 PROC_LOG_FILE="${LOG_DIR}/observation_processing.log"
-STD_LOG="$LOG_DIR/$(date +%Y%m%d_%H%M%S).log"
+STD_LOG="$LOG_DIR/std_logs/$(date +%Y%m%d_%H%M%S).log"
 
 # redirect stdout and stderr to both the log and the terminal
 exec > >(tee -a "$STD_LOG") 2> >(tee -a "$STD_LOG" >&2)

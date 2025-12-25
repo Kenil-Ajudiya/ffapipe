@@ -2,9 +2,11 @@
 *.so
 *.log
 .vscode
+.env
 *.py[cod]
 __pycache__
 .mypy_cache
 cmd_ffapipe.sh
 nodes_custom.list
 nodes_maintainence.list
+inp_obs_dirs_copy.txt

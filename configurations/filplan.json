@@ -1,0 +1,9 @@
+[{
+	"time_downsample": 1, 
+	"frequency_downsample": 1,
+	"baseline_width": 0.0,
+	"dataout_mean": 128.0,
+	"dataout_std": 6.0,
+	"dataout_nbits": 8,
+	"rfi_flags": " "
+}]
