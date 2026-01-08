@@ -125,7 +125,6 @@ generate_mpi_files() {
 
 xtract_N_chk() {
     RAW_FILES=$(eval echo "$BEAM_DIR/$SCAN.raw.{0..$UPPER}")
-    AHDR_FILES=$(eval echo "$BEAM_DIR/$SCAN.raw.{0..$UPPER}.ahdr")
 
     REMOTE_OUTPUT=$(ssh -t -t "${nodes_list[0]}" "
         source ${TDSOFT}/env.sh;
@@ -150,9 +149,9 @@ xtract_N_chk() {
     EXIT_CODE=$(echo "$REMOTE_OUTPUT" | tail -n 1 | tr -d '\r')
     if [[ "$EXIT_CODE" -eq 0 ]]; then
         echo -e "${BLD}${BGRN}$(date '+%Y-%m-%d %H:%M:%S') # LOG # Successfully extracted the beams into filterbank files for scan: $SCAN${RST}"
-        cp $AHDR_FILES $output_dir/state/$SCAN
-        cp $AHDR_FILES $FIL_DIR/$SCAN
-        cp $AHDR_FILES $OBS_DIR/FilData/$SCAN
+        cp "${AHDR_FILES[@]}" "$output_dir/state/$SCAN"
+        cp "${AHDR_FILES[@]}" "$FIL_DIR/$SCAN"
+        cp "${AHDR_FILES[@]}" "$OBS_DIR/FilData/$SCAN"
         rm -f $RAW_FILES
         return 0
     else
@@ -207,47 +206,60 @@ run_ffapipe(){
 filter_candidates(){
     echo -e "${BLD}${BGRN}$(date '+%Y-%m-%d %H:%M:%S') # LOG # Starting candidate filtering for scan: $SCAN${RST}"
 
-    ssh -t -t "${nodes_list[0]}" "
-        source ${TDSOFT}/env.sh;
-        python -u ${FFA_PIPE_REPO}/src_scripts/cand_filter.py ${OP_SCAN_DIR}"
-
-    EXIT_CODE=$?
-    if [[ "$EXIT_CODE" -eq 255 ]]; then
-        echo -e "${BLD}${BRED}$(date '+%Y-%m-%d %H:%M:%S') # ERROR # SSH connection failed.${RST}"
-        echo -e "${BLD}${BMAG}$(date '+%Y-%m-%d %H:%M:%S') # HELP # SSH command exit status: $EXIT_CODE${RST}"
-        exit 1
-    fi
-    if [[ "$EXIT_CODE" -eq 0 ]]; then
-        echo -e "${BLD}${BGRN}$(date '+%Y-%m-%d %H:%M:%S') # LOG # Successfully completed candidate optimisation for scan: $SCAN${RST}"
-        return 0
-    else
-        echo -e "${BLD}${BRED}$(date '+%Y-%m-%d %H:%M:%S') # ERROR # Candidate optimisation failed for scan: $SCAN.${RST}"
+    SUMMARY_FILES=("$OP_SCAN_DIR"/BM*/candidates/summary.csv)
+    if [[ ${#SUMMARY_FILES[@]} -eq 0 ]]; then
+        echo -e "${BLD}${BYLW}$(date '+%Y-%m-%d %H:%M:%S') # WARNING # No candidates found for scan: $SCAN. Skipping candidate filtering step.${RST}"
         return 1
+    else
+        echo -e "${BLD}${BGRN}$(date '+%Y-%m-%d %H:%M:%S') # LOG # Found ${#SUMMARY_FILES[@]} candidate summary files for scan: $SCAN. Starting candidate filtering step.${RST}"
+        ssh -t -t "${nodes_list[0]}" "
+            source ${TDSOFT}/env.sh;
+            python -u ${FFA_PIPE_REPO}/src_scripts/cand_filter.py ${OP_SCAN_DIR}"
+
+        EXIT_CODE=$?
+        if [[ "$EXIT_CODE" -eq 255 ]]; then
+            echo -e "${BLD}${BRED}$(date '+%Y-%m-%d %H:%M:%S') # ERROR # SSH connection failed.${RST}"
+            echo -e "${BLD}${BMAG}$(date '+%Y-%m-%d %H:%M:%S') # HELP # SSH command exit status: $EXIT_CODE${RST}"
+            exit 1
+        fi
+        if [[ "$EXIT_CODE" -eq 0 ]]; then
+            echo -e "${BLD}${BGRN}$(date '+%Y-%m-%d %H:%M:%S') # LOG # Successfully completed candidate optimisation for scan: $SCAN${RST}"
+            return 0
+        else
+            echo -e "${BLD}${BRED}$(date '+%Y-%m-%d %H:%M:%S') # ERROR # Candidate optimisation failed for scan: $SCAN.${RST}"
+            return 1
+        fi
     fi
 }
 
 classify_candidates(){
     echo -e "${BLD}${BGRN}$(date '+%Y-%m-%d %H:%M:%S') # LOG # Starting ML classification for scan: $SCAN${RST}"
 
-    ssh -t -t "${nodes_list[0]}" "
-        source ${TDSOFT}/env.sh;
-        conda activate ghvfdt_env;
-        export PYTHONPATH="$TDSOFT/riptide-0.0.1/:$PYTHONPATH";
-        python -u ${TDSOFT}/ghvfdt/GHVFDT_pipeline.py -c ${OP_SCAN_DIR}/combined_candidates.csv -o ${OP_SCAN_DIR}/${SCAN}_positive_candidates.pdf"
-    # Classify only the filtered candidates using GHVFDT after converging to a robust candidate sifting algorithm.
-
-    EXIT_CODE=$?
-    if [[ "$EXIT_CODE" -eq 255 ]]; then
-        echo -e "${BLD}${BRED}$(date '+%Y-%m-%d %H:%M:%S') # ERROR # SSH connection failed.${RST}"
-        echo -e "${BLD}${BMAG}$(date '+%Y-%m-%d %H:%M:%S') # HELP # SSH command exit status: $EXIT_CODE${RST}"
-        exit 1
-    fi
-    if [[ "$EXIT_CODE" -eq 0 ]]; then
-        echo -e "${BLD}${BGRN}$(date '+%Y-%m-%d %H:%M:%S') # LOG # Successfully completed ML classification for scan: $SCAN${RST}"
-        return 0
-    else
-        echo -e "${BLD}${BRED}$(date '+%Y-%m-%d %H:%M:%S') # ERROR # ML classification failed for scan: $SCAN.${RST}"
+    if [[ ! -f "${OP_SCAN_DIR}/combined_candidates.csv" ]]; then
+        echo -e "${BLD}${BYLW}$(date '+%Y-%m-%d %H:%M:%S') # WARNING # Combined candidates file not found for scan: $SCAN. Cannot perform ML classification.${RST}"
         return 1
+    else
+        echo -e "${BLD}${BGRN}$(date '+%Y-%m-%d %H:%M:%S') # LOG # Found combined candidates file for scan: $SCAN. Starting ML classification step.${RST}"
+        ssh -t -t "${nodes_list[0]}" "
+            source ${TDSOFT}/env.sh;
+            conda activate ghvfdt_env;
+            export PYTHONPATH="$TDSOFT/riptide-0.0.1/:$PYTHONPATH";
+            python -u ${TDSOFT}/ghvfdt/GHVFDT_pipeline.py -c ${OP_SCAN_DIR}/combined_candidates.csv -o ${OP_SCAN_DIR}/${SCAN}_positive_candidates.pdf"
+        # Classify only the filtered candidates using GHVFDT after converging to a robust candidate sifting algorithm.
+
+        EXIT_CODE=$?
+        if [[ "$EXIT_CODE" -eq 255 ]]; then
+            echo -e "${BLD}${BRED}$(date '+%Y-%m-%d %H:%M:%S') # ERROR # SSH connection failed.${RST}"
+            echo -e "${BLD}${BMAG}$(date '+%Y-%m-%d %H:%M:%S') # HELP # SSH command exit status: $EXIT_CODE${RST}"
+            exit 1
+        fi
+        if [[ "$EXIT_CODE" -eq 0 ]]; then
+            echo -e "${BLD}${BGRN}$(date '+%Y-%m-%d %H:%M:%S') # LOG # Successfully completed ML classification for scan: $SCAN${RST}"
+            return 0
+        else
+            echo -e "${BLD}${BRED}$(date '+%Y-%m-%d %H:%M:%S') # ERROR # ML classification failed for scan: $SCAN.${RST}"
+            return 1
+        fi
     fi
 }
 
@@ -293,14 +305,19 @@ analysis() {
             else
                 echo "Starting to process the following observation: $(basename $OBS_DIR). Check $OBS_PROC_STATUS_LOG_FILE." >> $PROC_LOG_FILE
                 for SCAN in "$BEAM_DIR"/*.raw.0.ahdr; do
-                    # NBEAMS=$(grep -m1 "Total No. of Beams/host[[:space:]]*=" "$SCAN" | awk -F= '{print $2}' | xargs)
-                    # TOTAL_BMS=$(grep -m1 "Total No. of Beams[[:space:]]*=" "$SCAN" | awk -F= '{print $2}' | xargs)
-                    NBEAMS=10           # Temporary hardcoding.
-                    TOTAL_BMS=160       # Temporary hardcoding.
-                    NHOSTS=$(( TOTAL_BMS / NBEAMS ))
-                    UPPER=$((NHOSTS-1))
-
                     SCAN=$(basename -s .raw.0.ahdr "$SCAN")
+                    AHDR_FILES=("$BEAM_DIR/$SCAN.raw."*.ahdr)
+                    echo -e "${BCYN}$(date '+%Y-%m-%d %H:%M:%S') # INFO #${RST} Found ${#AHDR_FILES[@]} .ahdr files for scan: $SCAN."
+
+                    NBEAMS=$(grep -m1 "Total No. of Beams/host[[:space:]]*=" "${AHDR_FILES[0]}" | awk -F= '{print $2}' | xargs)
+                    # TOTAL_BMS=$(grep -m1 "Total No. of Beams[[:space:]]*=" "${AHDR_FILES[0]}" | awk -F= '{print $2}' | xargs)
+                    # The above is the total number of beams formed in the observation, all of which might not have been recorded.
+                    # However, NBEAMS gives the number of beams recorded per host, which is what we need here.
+                    NHOSTS="${#AHDR_FILES[@]}"
+                    TOTAL_BMS=$((NBEAMS*NHOSTS))
+                    UPPER=$((NHOSTS-1))
+                    echo -e "${BCYN}$(date '+%Y-%m-%d %H:%M:%S') # INFO #${RST} Processing $TOTAL_BMS beams from $NHOSTS hosts and $NBEAMS beams per host."
+
                     OP_SCAN_DIR=${output_dir}/state/${SCAN}
                     mkdir -p "$OP_SCAN_DIR"
                     SCAN_PROC_STATUS_LOG_FILE="${OP_SCAN_DIR}/${SCAN}_proc_status.log"
