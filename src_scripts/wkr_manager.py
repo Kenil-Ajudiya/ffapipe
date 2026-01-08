@@ -3,6 +3,7 @@ from glob import glob
 import timeit
 import pickle
 import logging
+import fcntl
 from datetime import timedelta
 from concurrent.futures import ProcessPoolExecutor as Pool
 
@@ -214,12 +215,13 @@ class PipelineWorker(object):
 
             for FILE in FILES:
 
-                with open(metas_file, "ab") as _mem_, open(filelist, "a") as _list_:
+                with open(metas_file, "ab") as _mem_:
 
                     # Initialise the filterbank file and process it.
 
                     FIL_NAME = FILE.name
                     FIL_PATH = FILE.path
+                    self.logger.log(MultiColorFormatter.LOG_LEVEL_NUM, f"Processing {FIL_PATH}")
                     filterbank = Filterbank(
                         FIL_NAME,
                         FIL_PATH,
@@ -235,7 +237,10 @@ class PipelineWorker(object):
                     # the file in a human readable filelist.
 
                     pickle.dump(filterbank.metadata, _mem_)
-                    _list_.write(f"{FIL_NAME}\n")
+                    with open(filelist, "a") as _list_:
+                        fcntl.flock(_list_, fcntl.LOCK_EX)
+                        _list_.write(f"{FIL_NAME}\n")
+                        fcntl.flock(_list_, fcntl.LOCK_UN)
 
                     # Delete the filterbank file if we started with a "*.raw" file.
                     # Otherwise leave it be.
