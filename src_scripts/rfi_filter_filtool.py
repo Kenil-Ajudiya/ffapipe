@@ -12,14 +12,15 @@
 # Last Update: December 08, 2025; Kenil Ajudiya (kenilr@iisc.ac.in)
 ####################################################################################################################################################
 
-import os
+from os import getuid, getgid
 import argparse
-import subprocess
+from subprocess import run, DEVNULL
 import logging
 from pathlib import Path
 from mpi4py import MPI
-from multiprocessing import Pool
+from multiprocessing import Pool, cpu_count
 from functools import partial
+from priwo import readhdr
 
 from utilities import MultiColorFormatter
 
@@ -42,14 +43,17 @@ def configure_logger(log_path: Path, name: str = "rfi_filter", level=logging.INF
 
     return logger
 
-def run_filtool(fil_file: Path, threads=1, logger: logging.Logger = None):
+def run_filtool(fil_file: Path, nbeams: int, threads=1, logger: logging.Logger = None):
     """
     Run filtool inside Docker for a single filterbank file.
     """
 
+    hdr = readhdr(fil_file)
+    ibeam = fil_file.stem.split(".")[0][2:]  # Extract beam number from filename, BMxx.down.fil
+
     cmd = [
         "docker", "run", "--rm",
-        "-u", f"{os.getuid()}:{os.getgid()}",
+        "-u", f"{getuid()}:{getgid()}",
         "-v", f"{Path(fil_file).parent}:/data",
         "ypmen/pulsarx",
         "sh", "-c",
@@ -57,11 +61,21 @@ def run_filtool(fil_file: Path, threads=1, logger: logging.Logger = None):
         f"-f /data/{fil_file.name} -o /data/{fil_file.stem}_RFI_Mitigated"
     ]
     # Run filtool and let any stderr/stdout surface; failures raise CalledProcessError
-    subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    run(cmd, check=True, stdout=DEVNULL, stderr=DEVNULL)
 
     expected_out_path = fil_file.parent / f"{fil_file.stem}_RFI_Mitigated_01.fil"
     if not expected_out_path.exists():
         raise FileNotFoundError(f"Expected output not found: {expected_out_path}")
+
+    # Correct header using filedit; pass arguments as separate tokens
+    filedit_cmd = [
+        "filedit",
+        "--src-name", str(hdr["source_name"]),
+        "--beam", str(ibeam),
+        "--nbeams", str(nbeams),
+        str(expected_out_path)
+    ]
+    run(filedit_cmd, check=True, stdout=DEVNULL, stderr=DEVNULL)
 
     # Log completion
     if logger:
@@ -92,7 +106,7 @@ def main():
         # shutil.copy(args.filplan, fil_dir)
         # start_time = timeit.default_timer()
 
-    all_fil_files: list[Path] = [f.resolve() for f in fil_dir.glob("BM*.down.fil")]
+    all_fil_files: list[Path] = [f.resolve() for f in fil_dir.glob("BM*.fil")]
     n_files_per_rank = len(all_fil_files) / NRANKS
     if n_files_per_rank % 1 != 0:
         n_files_per_rank = int(n_files_per_rank) + 1
@@ -109,15 +123,14 @@ def main():
 
     # Start multiprocessing pool to run filtool on assigned files
     nprocess = args.workers if args.workers else len(fil_files)
-    nthreads = args.threads if args.threads else os.cpu_count() // nprocess
+    nthreads = args.threads if args.threads else cpu_count() // nprocess
     logger.info(f"Rank {RANK} processing {len(fil_files)} files with {nprocess} processes and {nthreads} threads each.")
 
-    pool = Pool(processes=nprocess)
-    worker = partial(run_filtool, threads=nthreads, logger=logger)
-    pool.map(worker, fil_files)
-    pool.close()
-    pool.join()
-
+    worker = partial(run_filtool, nbeams=len(all_fil_files), threads=nthreads, logger=logger)
+    with Pool(processes=nprocess) as pool:
+        for _ in pool.imap_unordered(worker, fil_files):
+            pass
+    
     # COMM.Barrier()  # Ensure all ranks have completed processing before moving files
 
     # if RANK == 0:
