@@ -101,15 +101,6 @@ class Filterbank(object):
         """ Number of folded profiles archived """
         return count_files(self.arv_prf_path, extension=".archive")
 
-    def cumulative_walltime(self):
-
-        """Returns the total amount of time spent in processing each filterbank
-        file, in the appropriate format.
-        """
-
-        total_time = timedelta(seconds=self._cumulative_walltime)
-        return total_time
-
     def configure_logger(self, level=logging.INFO, logs_path="."):
 
         """ Configure the loggers for this filterbank file. """
@@ -488,36 +479,26 @@ class Filterbank(object):
         self.logger.debug("Extracting variables from the header.")
 
         cmd1 = "header " + self.path
-        cmd2 = []
-        cmd2.append("grep 'Frequency of channel 1'")
-        cmd2.append("grep 'Channel bandwidth'")
-        cmd2.append("grep 'Number of channels'")
-        cmd2.append("grep 'Sample time'")
-        cmd2.append("grep 'Observation length'")
+        cmd2 = "grep 'Number of samples'"
         cmd3 = "awk -F: '{print $2}'"
 
         arg1 = shlex.split(cmd1)
-        arg2 = []
-        arg2 = [shlex.split(i) for i in cmd2]
+        arg2 = shlex.split(cmd2)
         arg3 = shlex.split(cmd3)
 
-        variables = []
-
-        for i in range(len(cmd2)):
+        try:
             p1 = subprocess.Popen(arg1, stdout=subprocess.PIPE)
-            p2 = subprocess.Popen(arg2[i], stdin=p1.stdout, stdout=subprocess.PIPE)
+            p2 = subprocess.Popen(arg2, stdin=p1.stdout, stdout=subprocess.PIPE)
             p3 = subprocess.Popen(arg3, stdin=p2.stdout, stdout=subprocess.PIPE)
-            variables.append(float(p3.communicate()[0].decode("utf-8").split()[0]))
-
-        self.BW = round(-1 * variables[1] * variables[2])  # Bandwidth.
-        self.CFREQ = variables[0] - (self.BW / 2)  # Central frequency.
-        self.NUMCHAN = variables[2]  # Number of channels.
-        self.TSAMP = variables[3]  # Sampling time.
-        self.OBSVT = variables[4]  # Length of the observation.
+            self.numout = int(p3.communicate()[0].decode("utf-8").split()[0])
+            self.numout = int(round(self.numout / self.config.ddplan["DS"] / 2) * 2)
+        except IndexError:
+            self.logger.error("Could not read the number of samples from the header. Check if the filterbank file is valid.")
+            raise
 
         self.logger.debug("Done extracting variables.")
 
-    def segmented_dedisp(self, dm_segment):
+    def segmented_dedisp(self, worker_lodm):
 
         """Dedisperse a segment of DM space using the "prepsubband" module.
 
@@ -528,19 +509,14 @@ class Filterbank(object):
             to be carried out.
         """
 
-        TSAMP = float(self.TSAMP) / 1e6
-        NUMOUT = int(
-            round((self.OBSVT * 60) / TSAMP / self.config.ddplan["DS"] / 1000) * 1000
-        )
-
         cmd_dedisp = (
             "prepsubband -nobary -numout {} -lodm {} -dmstep {} -numdms {} -nsub {} "
             "-downsamp {} {} -o {}"
         ).format(
-            NUMOUT,
-            dm_segment,
+            self.numout,
+            worker_lodm,
             self.config.ddplan["dDM"],
-            self.dm_trials,
+            self.num_dm_trials_per_core,
             self.config.ddplan["nsub"],
             self.config.ddplan["DS"],
             self.path,
@@ -561,21 +537,23 @@ class Filterbank(object):
         DM_highest = self.config.ddplan["DM_highest"]
         dDM = self.config.ddplan["dDM"]
         numDMs = self.config.ddplan["numDMs"]
+        nWorkers = self.config.cores
+        self.logger.info(f"Starting dedispersion from DM {DM_lowest} to DM {DM_highest} with dDM {dDM}.")
 
-        dm_sequence = np.arange(DM_lowest, DM_highest, dDM)
-        segment_length = float(DM_highest - DM_lowest) / self.config.cores
+        self.num_dm_trials_per_core = int(numDMs / nWorkers)
+        last_lodm = DM_highest - (DM_highest % nWorkers) + dDM
+        self.lodms = np.linspace(DM_lowest, last_lodm, nWorkers, False)
 
-        self.dm_trials = int(float(numDMs) / self.config.cores)
-        self.dm_segments = [
-            segments
-            for segments in step_iter(
-                dm_sequence, DM_lowest, DM_highest, segment_length
-            )
-        ]
+        self.logger.info(f"Parallely running {nWorkers} worker processes across {nWorkers * self.num_dm_trials_per_core} DM trials.")
+        with Pool(max_workers=nWorkers) as pool:
+            [p for p in pool.map(self.segmented_dedisp, self.lodms)]
 
-        self.logger.info(f"Parallely running {len(self.dm_segments)} worker processes across {numDMs} DM trials.")
-        with Pool() as pool:
-            [p for p in pool.map(self.segmented_dedisp, self.dm_segments)]
+        if numDMs % nWorkers != 0:
+            nWorkers = int((DM_highest - last_lodm) / dDM) + 1
+            with Pool(max_workers=nWorkers) as pool:
+                self.num_dm_trials_per_core = 1
+                self.logger.info(f"Running last {nWorkers} worker processes with 1 DM trial each for lodm {last_lodm} to {DM_highest}.")
+                [p for p in pool.map(self.segmented_dedisp, np.linspace(last_lodm, DM_highest, nWorkers))]
 
         self.logger.info(f"Done with dedispersion. Number of DM trials processed: {self.proc_dm_trials}")
 
@@ -730,23 +708,14 @@ class Filterbank(object):
             processes = []
 
             with Pool(max_workers=self.config.cores) as pool:
-                [
-                    processes.append(pool.submit(self.fold_candidate, cand.path))
-                    for cand in candidate_batch
-                ]
+                [processes.append(pool.submit(self.fold_candidate, cand.path)) for cand in candidate_batch]
                 wait(processes)
 
         self.logger.info("All candidates folded. Compile all plots into single PDF file. Delete all PS files.")
 
         # Use "ghostscript" to combine all .ps files into a single PDF.
 
-        proc_ps_combine = subprocess.Popen(
-            "gs -sDEVICE=pdfwrite -dNOPAUSE -dBATCH -dSAFER "
-            "-sOutputFile=fold_candidates.pdf *.ps",
-            shell=True,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
+        subprocess.Popen("gs -sDEVICE=pdfwrite -dNOPAUSE -dBATCH -dSAFER -sOutputFile=fold_candidates.pdf *.ps", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
         # Change back to current working directory.
 
@@ -769,25 +738,11 @@ class Filterbank(object):
         arg_arvs = []
         proc_arvs = []
 
-        [
-            cmd_arvs.append(
-                "pam -q -a PRESTO {} -e archive -u {}".format(
-                    fold_prf_path, self.arv_prf_path
-                )
-            )
-            for fold_prf_path in fold_prf_paths
-        ]
+        [cmd_arvs.append("pam -q -a PRESTO {} -e archive -u {}".format(fold_prf_path, self.arv_prf_path)) for fold_prf_path in fold_prf_paths]
 
         [arg_arvs.append(shlex.split(cmd_arv)) for cmd_arv in cmd_arvs]
 
-        [
-            proc_arvs.append(
-                subprocess.Popen(
-                    arg_arv, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-                )
-            )
-            for arg_arv in arg_arvs
-        ]
+        [proc_arvs.append(subprocess.Popen(arg_arv, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)) for arg_arv in arg_arvs]
         [proc_arv.wait() for proc_arv in proc_arvs]
 
         self.logger.info(f"Archiving done for {self.num_arv_prfs} candidates.")
@@ -802,7 +757,7 @@ class Filterbank(object):
 
         """ Start processing the filterbank file. """
 
-        self.logger.log(MultiColorFormatter.LOG_LEVEL_NUM, f"Start processing {self.output_name}.")
+        self.logger.log(MultiColorFormatter.LOG_LEVEL_NUM, f"Start processing {self.output_name} on rank {self.config.RANK}.")
         start_time = timeit.default_timer()
 
         self.make_fil()
@@ -823,19 +778,22 @@ class Filterbank(object):
         # self.logger.log(MultiColorFormatter.LOG_LEVEL_NUM, "Plotting candidates...")
         # self.plot_candidates()
         # plot_time = timeit.default_timer()
+        # Delete all timeseries files here since plotting is disabled.
+        [os.remove(timeseries) for timeseries in filter_by_ext(self.timeseries_path, extension=".dat")]
+        [os.remove(headers) for headers in filter_by_ext(self.timeseries_path, extension=".inf")]
 
         # self.fold_profiles()
         # self.archive_profiles()
         # self.clean_profiles()
-        
+
         self.metadata = Meta(self._attrs_)
 
         end_time = timeit.default_timer()
         self._cumulative_walltime = (end_time - start_time)
-        self.logger.log(MultiColorFormatter.LOG_LEVEL_NUM, "Done processing {}.".format(self.output_name))
+        self.logger.log(MultiColorFormatter.LOG_LEVEL_NUM, "Done processing {} on rank {}.".format(self.output_name, self.config.RANK))
         self.logger.log(MultiColorFormatter.LOG_LEVEL_NUM, "Time taken to make filterbank files: {}".format(timedelta(seconds=(make_fil_time - start_time))))
         self.logger.log(MultiColorFormatter.LOG_LEVEL_NUM, "Time taken to make directories and load header: {}".format(timedelta(seconds=(start_dedisp_time - make_fil_time))))
         self.logger.log(MultiColorFormatter.LOG_LEVEL_NUM, "Time taken for dedispersion: {}".format(timedelta(seconds=(dedisp_time - start_dedisp_time))))
         self.logger.log(MultiColorFormatter.LOG_LEVEL_NUM, "Time taken for FFA search: {}".format(timedelta(seconds=(FFA_time - dedisp_time))))
         # self.logger.log(MultiColorFormatter.LOG_LEVEL_NUM, "Time taken for plotting candidates: {}".format(timedelta(seconds=(plot_time - FFA_time))))
-        self.logger.log(MultiColorFormatter.LOG_LEVEL_NUM, "Total processing time: {}".format(self.cumulative_walltime()))
+        self.logger.log(MultiColorFormatter.LOG_LEVEL_NUM, "Total processing time: {}".format(timedelta(seconds=self._cumulative_walltime)))
